@@ -33,18 +33,37 @@ export function TemplatesPanel({ templates, onUse }: TemplatesPanelProps) {
   const [confirming, setConfirming] = useState<Template | null>(null);
   const nameInput = useRef<HTMLInputElement>(null);
 
+  /**
+   * Counts form *openings*, and is the only thing the focus effect below may
+   * depend on.
+   *
+   * `draft` is not usable as that dependency, however natural it looks: both
+   * `onChange` handlers replace the whole draft object on every keystroke, so
+   * its identity changes per character. Depending on it re-ran the focus effect
+   * mid-typing and pulled the caret out of the content textarea and back into
+   * the name field on each character. Nor is `draft?.id` enough — it is `null`
+   * both for a new template and for no form at all, so opening the new-template
+   * form would never focus anything.
+   *
+   * Starts at 0, which is the "no form has been opened yet" state, so a mount
+   * with the list showing focuses nothing.
+   */
+  const [opened, setOpened] = useState(0);
+
   useEffect(() => {
-    if (draft) nameInput.current?.focus();
-  }, [draft]);
+    if (opened > 0) nameInput.current?.focus();
+  }, [opened]);
 
   function openNew() {
     setValidation(null);
     setDraft(EMPTY_DRAFT);
+    setOpened((count) => count + 1);
   }
 
   function openEdit(template: Template) {
     setValidation(null);
     setDraft({ id: template.id, name: template.name, content: template.content });
+    setOpened((count) => count + 1);
   }
 
   async function submit(event: React.FormEvent) {
