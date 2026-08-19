@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The faintest text in the app is now readable.** Field hints, input placeholders, the
+  `TYPING` / `WINDOW` / `HOTKEYS` labels in Settings and the "Press a key combination…" prompt were
+  drawn in a grey that missed the WCAG AA contrast minimum in both themes — 3.34:1 on the light
+  background and 4.23:1 on the dark one, against the 4.5:1 required at the size they are rendered
+  at. That is most of the explanatory copy in the app, and on white it was visibly washed out. Both
+  values now clear the minimum. Switches also show a tick when they are on, so whether one is
+  enabled no longer depends on being able to tell the accent colour apart from the track. The
+  contrast half came from [@aditya226-sharma](https://github.com/aditya226-sharma) in
+  [#14](https://github.com/rendyuwu/ketikin/pull/14).
+  ([#4](https://github.com/rendyuwu/ketikin/issues/4))
 - **Only one copy of Ketikin runs at a time.** Launching it again while it was hidden in the tray
   started a whole second app, complete with its own window and its own tray icon, while the
   original kept running invisibly. That was worse than a duplicate: global shortcuts can only
