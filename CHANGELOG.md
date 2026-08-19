@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Only one copy of Ketikin runs at a time.** Launching it again while it was hidden in the tray
+  started a whole second app, complete with its own window and its own tray icon, while the
+  original kept running invisibly. That was worse than a duplicate: global shortcuts can only
+  belong to one process, so the new window reported a hotkey error while the shortcuts that
+  actually worked belonged to the copy you could not see, and both copies wrote the same settings
+  and templates files, so a template saved in one window vanished when the other saved. A second
+  launch now brings the existing window back and exits.
+- **Typing into a template no longer throws you back into the name field.** Every character typed
+  into the content box moved the cursor back up to **Template name**, so the first character
+  landed in the content and the rest of what you typed was appended to the name. The name field is
+  focused when the form opens, and only then.
+
+### Changed
+
+- `docs/RELEASING.md` now describes the `target_commitish` release failure — what the error means,
+  that it discards four platform builds that had already succeeded, and that CI cannot catch it —
+  and no longer assumes a failed release left a GitHub release behind to delete.
+
 ## [0.1.0] - 2026-08-19
 
 Initial public release of Ketikin, a simple cross-platform auto-typer for consoles that do not
