@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The app and tray icon are legible at the size they are actually seen at.** At 16 pixels — the
+  titlebar and the system tray, which is where this icon spends nearly all of its life — the old one
+  rendered as a blue smudge. It was four nested shapes with three concentric outlines, and at that
+  size the keycap's outline, the inset behind it and the arms of the text cursor all measured under
+  one pixel. It is now a single brass keycap with the caret *knocked out* of it rather than drawn on
+  it, because a hole has no line weight to lose, and the whole thing is drawn on a 16-pixel grid and
+  scaled up instead of drawn at 1024 and scaled down — every size ships as a render of that grid
+  rather than a resample of the big one, the 16px one included. The brass is the same brass the
+  interface uses; the icon used to be a third blue that matched neither theme's accent. macOS now
+  gets a real menu bar template as well — black plus alpha, tinted by the system for a light or dark
+  bar — instead of a colour tile sitting among the monochrome icons of every other app.
+  ([#11](https://github.com/rendyuwu/ketikin/issues/11))
 - **Pinning the theme to Dark no longer keeps the washed-out grey.** The contrast fix for the
   faintest text landed in the palette used when Theme is set to **System**, but not in the one used
   when it is pinned to **Dark**, so anyone who chose Dark explicitly still saw field hints,
