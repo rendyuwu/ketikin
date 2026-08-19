@@ -24,8 +24,9 @@ This produces two files:
 - `~/.tauri/ketikin.key.pub` — the **public** key. This value goes into the updater configuration
   in `src-tauri/tauri.conf.json` and is compiled into every build.
 
-Use an **empty password** when prompted. The release workflow runs unattended and has no way to
-answer an interactive prompt.
+The key password is asked for interactively at generation time. Whatever you answer there has to be
+supplied to CI through a secret, because the release workflow runs unattended and cannot answer a
+prompt.
 
 ### Required repository secrets
 
@@ -34,7 +35,7 @@ Set these under **Settings > Secrets and variables > Actions** on `rendyuwu/keti
 | Secret | Value |
 | --- | --- |
 | `TAURI_SIGNING_PRIVATE_KEY` | The full contents of the private key file (`~/.tauri/ketikin.key`) — the entire file, including any header lines, not the file path. |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | An empty string. The secret must still exist; its value is empty. |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | The password the key was generated with. Skip this secret entirely if the key has none — GitHub cannot store an empty value, and an absent secret already resolves to the empty string the build expects. |
 
 If `TAURI_SIGNING_PRIVATE_KEY` is missing or malformed, the build will either fail or produce
 artifacts without `.sig` files. Unsigned artifacts are not usable by the updater, so a release like
