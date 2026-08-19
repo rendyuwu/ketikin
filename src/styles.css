@@ -118,10 +118,8 @@
        15px / 400 / mono                  the compose surface, and its
                                           empty-state line in sans
        22px / 500 / tabular               duration estimate
-       34px / 500 / tabular               countdown digit    (reserved — #9)
-     34 is declared here but unused: it needs the countdown takeover, and it
-     would otherwise be a size with no home. Weights: 400, 500, 600. Nothing
-     else. */
+       34px / 500 / tabular               countdown digit
+     Weights: 400, 500, 600. Nothing else. */
 
   /* Layout rhythm, named by intent rather than by size. The scale this replaced
      used one value (12px) for the panel, for sections, for rows and for control
@@ -307,6 +305,34 @@ body {
   flex-direction: column;
   height: 100%;
   min-width: 0;
+}
+
+/* The signature of the design, and functional rather than decorative: a 3px
+   accent line on the window's own top edge, full bleed, no radius, no padding.
+   Ketikin is behind another window for the entire time it is doing its job, so
+   this is the only part of the UI that is still readable — and everything else
+   in the design stays quiet so this one element can carry.
+   `fixed` rather than a flex child of `.app`: the rail exists only while a run
+   does, and as a child it would shove the whole interface down 3px each time a
+   run started and back up when it ended. Below `.overlay` (z-index 10) on
+   purpose, so a confirmation dialog's scrim still dims everything beneath it. */
+.rail {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 5;
+  height: 3px;
+  background: var(--border);
+}
+
+/* Width only. `typing://state` is coalesced to roughly 20 events per second by
+   the typing engine, and at that rate anything that moves the layout thrashes;
+   a width is composited. */
+.rail-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 120ms linear;
 }
 
 /* The tabs and the typing status share this row. There is no wordmark: the OS
@@ -1108,31 +1134,77 @@ body {
   border-radius: 50%;
 }
 
-/* The radius is half the height — derived from the shape, not from --r-*. */
-.progress {
-  height: 4px;
-  overflow: hidden;
-  background: var(--bg-active);
-  border-radius: 2px;
+/* Countdown takeover. The screen visibly changes mode, so a glance answers "did
+   it start?" without reading anything — which is the whole point, because the
+   user is mid-click into another window. The composed text drops to 30% so the
+   digit owns the optical centre without the canvas being emptied. */
+.compose--taken .compose-input {
+  opacity: 0.3;
 }
 
-.progress-fill {
-  height: 100%;
-  background: var(--accent);
-  transition: width 120ms linear;
+.takeover {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Nothing here is clickable and the textarea underneath still is, so clicks
+     fall through rather than being swallowed by an overlay. */
+  pointer-events: none;
+}
+
+/* The band is not decoration and it is not a card: no radius, no border, no
+   shadow. It exists because a 34px digit and a 13px instruction laid straight
+   over mono text at 30% are both illegible — the glyphs interleave with the
+   code behind them and neither can be read. An opaque strip across the middle
+   keeps the two things the user has to read crisp while leaving the composed
+   text visible above and below it, which is the point of dimming rather than
+   clearing the canvas. Full bleed: `.takeover` is positioned against
+   `.compose`'s padding box, which already reaches the window edges. */
+.takeover-band {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-tight);
+  width: 100%;
+  padding: var(--s-group) var(--s-edge);
+  background: var(--bg);
 }
 
 /* One of the four places brass is allowed: the countdown is the moment the app
    is about to take over the keyboard, and it has to be findable from the corner
-   of the eye while the user is clicking into another window. It also carries the
-   "Click into the target window." instruction, which used to stand permanently
-   under the button — it is only actionable during the countdown, so this is the
-   only time it is on screen. */
-.countdown {
-  font-size: 13px;
-  text-align: center;
+   of the eye. */
+.takeover-digit {
+  font-size: 34px;
+  font-weight: 500;
+  line-height: 1;
   color: var(--accent-text);
   font-variant-numeric: tabular-nums;
+  /* One of only three sanctioned motion moments in the app. Replayed by
+     remounting the element on each tick (`key={countdown}` in TypePanel), not by
+     restarting a transition. The keyframes end at the resting state, so the
+     reduced-motion block — which only collapses durations — lands the digit
+     where it belongs instead of leaving it invisible; that is why this needs no
+     exception there, and why the `to` step must not be dropped as redundant. */
+  animation: digit-swap 180ms ease;
+}
+
+@keyframes digit-swap {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Present tense, and present only while it is true. */
+.takeover-note {
+  font-size: 13px;
+  text-align: center;
+  color: var(--text-muted);
 }
 
 .result {

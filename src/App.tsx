@@ -244,8 +244,36 @@ export default function App() {
   const showStorage = storage !== null && storage.degraded && !storageDismissed;
   const updateInfo = updater.dismissed ? null : updater.info;
 
+  // Zero during the countdown, when `total` is already known but nothing has
+  // been typed — so the rail's track appears the moment a run is accepted and
+  // starts filling when the keystrokes do.
+  const runState = typing.state;
+  const railPercent =
+    runState.total > 0
+      ? Math.min(100, (runState.typed / runState.total) * 100)
+      : 0;
+
   return (
     <div className="app">
+      {/* The progress indicator lives on the window's own top edge rather than
+          inside the panel, because Ketikin is deliberately behind another
+          window for the whole time it is working: the user starts a run and
+          clicks into a KVM console. A bar in the content area is one that never
+          gets read. This is the only element that survives the window being
+          almost entirely occluded, which is the normal condition here. */}
+      {runState.phase !== "idle" ? (
+        <div
+          className="rail"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={runState.total}
+          aria-valuenow={runState.typed}
+          aria-label="Typing progress"
+        >
+          <div className="rail-fill" style={{ width: `${railPercent}%` }} />
+        </div>
+      ) : null}
+
       {/* The tabs and the status share one row, and there is no wordmark: the
           OS titlebar already says "Ketikin". */}
       <header className="header">
