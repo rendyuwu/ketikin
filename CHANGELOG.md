@@ -35,6 +35,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Spacing and text sizes now group the interface instead of flattening it.** Every distance on
+  screen used to be the same 12px, so nothing read as belonging together, and six text sizes were
+  crowded into a 4px range where two of them were indistinguishable. There are now three text sizes
+  and three distances with distinct jobs: a label sits close to its control, controls that form a
+  group sit closer to each other than to the next group, and each Settings section is separated by a
+  clear band — so `TYPING`, `WINDOW` and `HOTKEYS` label the group beneath them instead of floating
+  between two. Template names and dialog titles are larger, buttons and inputs have a slightly
+  crisper corner while dialogs and panels have a softer one, and the delay and countdown fields use
+  fixed-width digits so the value stops shifting sideways as you type.
+  ([#5](https://github.com/rendyuwu/ketikin/issues/5))
 - `docs/RELEASING.md` now describes the `target_commitish` release failure — what the error means,
   that it discards four platform builds that had already succeeded, and that CI cannot catch it —
   and no longer assumes a failed release left a GitHub release behind to delete.
