@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The tray icon shows when a run is going.** Ketikin's whole premise is that you are not looking at
+  it while it types — you are watching the console it is typing into — and both of the settings that
+  hide the window to the tray are on by default, so the usual state of a run is that the tray icon is
+  all of the app you can see. It said nothing: idle and mid-run looked identical. The icon now gains a
+  mark for the length of a run, countdown included, and loses it again when the run finishes, is
+  stopped or fails. It is one shape added to the same keycap rather than a second icon — a dot knocked
+  out of the key above the caret — so it reads as the same app in a different state, survives 16
+  pixels, and works in the macOS menu bar, where the icon is a single tint and colour could not have
+  carried it. The mark is set and cleared by the same guard that guarantees the run's terminal event,
+  so a run that panics cannot leave the tray claiming to be busy.
+  ([#16](https://github.com/rendyuwu/ketikin/issues/16))
+
 ### Fixed
 
 - **You can now see where every control ends.** The edge of every input, button, hotkey field,

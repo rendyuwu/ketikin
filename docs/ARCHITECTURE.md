@@ -25,7 +25,7 @@ surface in one place.
 | Templates | CRUD over the saved snippets, persisted through storage. |
 | Typing engine | Turns a block of text into keystrokes. Owns the countdown, the per-keystroke delay, newline handling, and the cancellable worker. |
 | Hotkeys | Registers and unregisters the global start and stop accelerators and maps them onto the typing engine's start and stop. Registration can fail when another process already owns a combination; the failure is surfaced to the UI and the previous binding is kept. |
-| Tray | Builds the tray icon and its menu (show/hide the window, quit), and intercepts window close and minimize when the tray settings call for it. If the icon cannot be created — no StatusNotifier host on the desktop — both tray settings are ignored for the session so the window can never become unreachable, and the UI shows a banner. Persisted settings are not rewritten. |
+| Tray | Builds the tray icon and its menu (show/hide the window, quit), and intercepts window close and minimize when the tray settings call for it. Also swaps the icon for a run-state variant while typing, twice per run, driven from the typing engine's `RunGuard` — the tray is the only part of Ketikin still on screen once the window is hidden. If the icon cannot be created — no StatusNotifier host on the desktop — both tray settings are ignored for the session so the window can never become unreachable, and the UI shows a banner. Persisted settings are not rewritten. |
 | Updater | Checks GitHub Releases, verifies the minisign signature against the compiled-in public key, and installs and restarts. Skipped entirely when auto-check is off. |
 
 ## Typing engine

@@ -1,0 +1,30 @@
+<!--
+  The run-state macOS menu bar variant, shown while Ketikin is typing. Source of
+  tray-macos-template-run.png, which tray.rs embeds; nothing else consumes this
+  file.
+
+  This is tray-macos-template.svg with one shape added, on that file's own
+  18-unit grid and at its coordinates. Read its comment first: why the grid is 18
+  rather than 16, and why there is no tile and no brass here, are both explained
+  there and both still apply.
+
+  The added mark is tray-run.svg's 2x2 dot at 18/16 scale, centred over the caret
+  on the keycap's own centre line. It has to be a hole rather than a light shape:
+  a template image is black plus alpha and the system tints it, so there is no
+  background colour to paint a dot in and a white dot would come out white
+  whatever the menu bar is doing. Both knockouts therefore live in the one mask.
+
+  Two units at this scale is two pixels at 18 points and four at the 2x render,
+  which is the floor for a mark that has to survive the menu bar at all.
+
+  (No double hyphens below this line: XML forbids them inside a comment.)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 18 18">
+  <mask id="knockouts">
+    <rect width="18" height="18" fill="#FFFFFF"/>
+    <rect x="8" y="5" width="2" height="2" fill="#000000"/>
+    <rect x="5" y="12" width="8" height="2" fill="#000000"/>
+  </mask>
+
+  <rect x="1" y="1" width="16" height="16" rx="3.5" ry="3.5" fill="#000000" mask="url(#knockouts)"/>
+</svg>
