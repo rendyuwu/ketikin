@@ -43,6 +43,7 @@ jobs:
       tag: ${{ steps.tag.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
       notes: ${{ steps.notes.outputs.notes }}
+      sha: ${{ steps.sha.outputs.sha }}
     steps:
       - name: Resolve and validate tag
         id: tag
@@ -65,6 +66,18 @@ jobs:
         with:
           ref: ${{ steps.tag.outputs.tag }}
           fetch-depth: 0
+
+      # The create-release API's target_commitish takes a branch name or a commit
+      # SHA and rejects a tag name outright:
+      #   Validation Failed: {"field":"target_commitish","code":"invalid"}
+      # The checkout above leaves HEAD detached at the tagged commit, so resolve
+      # it here and hand the SHA to tauri-action instead of the tag.
+      - name: Resolve the tag to a commit SHA
+        id: sha
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       # GitHub Actions substitutes an *empty string* for an undefined secret and
       # offers no way to tell "unset" from "set to empty". Our signing key is
@@ -211,7 +224,7 @@ jobs:
           tagName: ${{ needs.prepare.outputs.tag }}
           releaseName: Ketikin ${{ needs.prepare.outputs.version }}
           releaseBody: ${{ needs.prepare.outputs.notes }}
-          releaseCommitish: ${{ needs.prepare.outputs.tag }}
+          releaseCommitish: ${{ needs.prepare.outputs.sha }}
           releaseDraft: true
           prerelease: false
           # v1.0.0 of tauri-action calls this input uploadUpdaterJson; the
