@@ -224,35 +224,36 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* The tabs and the status share one row, and there is no wordmark: the
+          OS titlebar already says "Ketikin". */}
       <header className="header">
-        <span className="wordmark">Ketikin</span>
+        <div className="tabs" role="tablist" aria-label="Sections">
+          {TABS.map((entry, index) => (
+            <button
+              key={entry.id}
+              type="button"
+              role="tab"
+              id={`tab-${entry.id}`}
+              className="tab"
+              aria-selected={tab === entry.id}
+              // Only the selected panel is mounted, so only it can be referenced.
+              aria-controls={tab === entry.id ? `panel-${entry.id}` : undefined}
+              tabIndex={tab === entry.id ? 0 : -1}
+              ref={(el) => {
+                tabRefs.current[index] = el;
+              }}
+              onClick={() => setTab(entry.id)}
+              onKeyDown={(event) => onTabKeyDown(event, index)}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+
         <span className="status" aria-live="polite">
           {statusLabel(typing.state)}
         </span>
       </header>
-
-      <div className="tabs" role="tablist" aria-label="Sections">
-        {TABS.map((entry, index) => (
-          <button
-            key={entry.id}
-            type="button"
-            role="tab"
-            id={`tab-${entry.id}`}
-            className="tab"
-            aria-selected={tab === entry.id}
-            // Only the selected panel is mounted, so only it can be referenced.
-            aria-controls={tab === entry.id ? `panel-${entry.id}` : undefined}
-            tabIndex={tab === entry.id ? 0 : -1}
-            ref={(el) => {
-              tabRefs.current[index] = el;
-            }}
-            onClick={() => setTab(entry.id)}
-            onKeyDown={(event) => onTabKeyDown(event, index)}
-          >
-            {entry.label}
-          </button>
-        ))}
-      </div>
 
       {settings.error || showStorage || trayMessage || trayError || updateInfo ||
       updater.error ? (

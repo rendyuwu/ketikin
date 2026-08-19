@@ -87,12 +87,14 @@ export function TypePanel({
 
       <div className="type-controls">
         <label className="inline-field" htmlFor="type-delay">
-          <span>Delay (ms)</span>
+          <span>Delay</span>
           <NumberInput
             id="type-delay"
             value={typingDelayMs}
             min={DELAY_MIN}
             max={DELAY_MAX}
+            suffix="ms"
+            suffixLabel="milliseconds"
             onCommit={onDelayChange}
           />
         </label>

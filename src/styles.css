@@ -187,6 +187,29 @@ body {
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  /* Both scrollbar properties inherit, so declaring them once here covers every
+     scroll container in the app — including ones added later. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* The OS scrollbar is wide, high-contrast and permanently visible on all three
+   platforms, which puts the loudest element on the screen beside the quietest
+   content. The pseudo-elements are what Chromium and WebView2 read; the
+   inherited properties above are what Firefox and recent WebKit read. Both are
+   needed, and neither is a fallback for the other. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
 }
 
 :focus-visible {
@@ -198,6 +221,23 @@ body {
   outline: none;
 }
 
+/* For text that has to be spoken but not drawn — the unit inside a number
+   field is rendered as a symbol ("ms", "s"), which reads well by eye and
+   poorly aloud, so the spoken form is a hidden sibling the field points at.
+   `clip-path` rather than `display: none`, which would remove it from the
+   accessibility tree along with everything else. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  border: 0;
+  clip-path: inset(50%);
+}
+
 /* =============================================================== shell == */
 
 .app {
@@ -207,21 +247,23 @@ body {
   min-width: 0;
 }
 
+/* The tabs and the typing status share this row. There is no wordmark: the OS
+   titlebar already says "Ketikin", so one here spent a whole row of a 700px
+   window repeating it. The bottom hairline is the only line in the app
+   separating chrome from content. */
 .header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--s-tight);
-  padding: var(--s-tight) var(--s-edge);
-}
-
-.wordmark {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  gap: var(--s-group);
+  padding: var(--s-tight) var(--s-edge) 0;
+  border-bottom: 1px solid var(--border);
 }
 
 .status {
+  /* min-width so the ellipsis can actually engage: a flex item's automatic
+     minimum size is its content, which would otherwise push the tabs. */
+  min-width: 0;
   font-size: 13px;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
@@ -230,31 +272,29 @@ body {
   text-overflow: ellipsis;
 }
 
-/* The 2px gap and padding are the inset of a segmented control, not layout
-   rhythm, so they stay literal — see the note in the controls section. */
 .tabs {
   display: flex;
-  gap: 2px;
-  margin: 0 var(--s-edge) var(--s-group);
-  padding: 2px;
-  background: var(--bg-sunken);
-  border: 1px solid var(--border);
-  border-radius: var(--r-control);
+  flex: none;
+  gap: var(--s-group);
+  /* Pulls the row down onto the header's own hairline so the active tab's
+     underline replaces that line rather than floating a pixel above it. */
+  margin-bottom: -1px;
 }
 
 .tab {
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 5px 8px;
+  flex: none;
+  padding: 4px 0 6px;
   font: inherit;
   font-size: 13px;
   color: var(--text-muted);
   background: transparent;
   border: 0;
-  border-radius: var(--r-control);
+  /* Present but transparent when unselected, so selecting a tab cannot change
+     the height of the row. */
+  border-bottom: 2px solid transparent;
   cursor: pointer;
   transition:
-    background-color var(--dur) ease,
+    border-color var(--dur) ease,
     color var(--dur) ease;
 }
 
@@ -262,10 +302,13 @@ body {
   color: var(--text);
 }
 
+/* Selection is carried by the underline and full-strength text, deliberately
+   not by weight: a 400-to-600 swap changes the label's width, which shoves
+   every tab after it sideways on each switch. `aria-selected` is what
+   assistive tech reads either way. */
 .tab[aria-selected="true"] {
-  font-weight: 600;
   color: var(--text);
-  background: var(--bg);
+  border-bottom-color: var(--accent);
 }
 
 /* Capped so a pile-up of banners can never squeeze the panel's own controls
@@ -276,7 +319,10 @@ body {
   flex-direction: column;
   gap: var(--s-tight);
   max-height: 35%;
-  padding: 0 var(--s-edge) var(--s-group);
+  /* Top only. The panel below owns the distance to whatever precedes it, so
+     the gap under the header hairline is one --s-group with or without
+     banners. */
+  padding: var(--s-group) var(--s-edge) 0;
   overflow-y: auto;
 }
 
@@ -293,7 +339,7 @@ body {
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
-  padding: 0 var(--s-edge) var(--s-edge);
+  padding: var(--s-group) var(--s-edge) var(--s-edge);
 }
 
 /* Adjacent-sibling margins rather than `gap`, because a panel holds pairs that
@@ -459,8 +505,67 @@ body {
   appearance: none;
 }
 
+/* Puts the unit inside the field's right edge so the label can be "Delay"
+   rather than "Delay (ms)" — a word less per field, and it reads like an
+   instrument. */
+.input-affix {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  /* `.field` is a grid, whose items stretch by default — without this the
+     wrapper spans the panel and the suffix lands against the panel's edge
+     instead of the field's. */
+  justify-self: start;
+}
+
+.input-suffix {
+  position: absolute;
+  right: 8px;
+  font-size: 13px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.input--suffixed {
+  padding-right: 30px;
+}
+
+/* Widened by exactly the suffix's inset, so the digits keep the room they had
+   before it moved in. */
+.input--number.input--suffixed {
+  width: 96px;
+}
+
+/* Only the closed state is styled. The popup stays native: replacing it with a
+   listbox means owning keyboard handling, screen-reader semantics and
+   positioning — the one dependency-shaped thing in an app that has none. */
+.select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  /* Same reason as `.input-affix`: a grid item stretches unless told not to,
+     which would put the chevron at the panel's edge. */
+  justify-self: start;
+}
+
 .select {
-  padding: 5px 8px;
+  /* Sized to its content rather than stretched across the panel: both of these
+     choose between two or three short options. */
+  width: auto;
+  max-width: 100%;
+  /* Room for the chevron, which sits outside the flow. */
+  padding-right: 28px;
+  appearance: none;
+}
+
+.select-chevron {
+  position: absolute;
+  right: 8px;
+  color: var(--text-muted);
+  /* Clicks fall through to the select, so hitting the chevron opens the popup
+     as it would on a native control. */
+  pointer-events: none;
 }
 
 .textarea {
@@ -528,18 +633,18 @@ body {
 }
 
 /* The radius is half the height — a pill, derived from the shape rather than
-   from --r-*. */
+   from --r-*. Smaller than the 34x20 it replaced, and with no border: at phone
+   proportions it sat beside square-cornered buttons and native selects as a
+   third design language. The off state is the graphite track alone, so the
+   shape reads without a stroke around it. */
 .toggle-track {
   position: relative;
   flex: none;
-  width: 34px;
-  height: 20px;
-  background: var(--bg-active);
-  border: 1px solid var(--border-strong);
-  border-radius: 10px;
-  transition:
-    background-color var(--dur) ease,
-    border-color var(--dur) ease;
+  width: 30px;
+  height: 18px;
+  background: var(--border-strong);
+  border-radius: 9px;
+  transition: background-color var(--dur) ease;
 }
 
 .toggle-thumb {
@@ -555,12 +660,11 @@ body {
 
 .toggle-input:checked + .toggle-track {
   background: var(--accent);
-  border-color: var(--accent);
 }
 
 .toggle-input:checked + .toggle-track .toggle-thumb {
   background: var(--accent-fg);
-  transform: translateX(14px);
+  transform: translateX(12px);
 }
 
 /* The on state has to be readable without perceiving the accent fill, so it is
@@ -629,11 +733,25 @@ body {
 }
 
 .section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--s-tight);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--text-faint);
+}
+
+/* Hangs a hairline off the label across the rest of the panel, so TYPING /
+   WINDOW / HOTKEYS head a band instead of floating as the faintest text on the
+   screen. A pseudo-element rather than markup, which means `.template-form`'s
+   reuse of the class gets the rule for free. */
+.section-title::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--border);
 }
 
 /* Adjacent-sibling margins rather than `gap`, because three of the distances
@@ -895,12 +1013,13 @@ body {
 
 /* ====================================================== settings panel == */
 
-/* min-height holds the row open so it doesn't jump when "Saved" appears: one
-   line of the body step at line-height 1.45. */
+/* Holds nothing but the "Saved" flash. min-height keeps the row open so the
+   panel doesn't jump when the flash appears and disappears: one line of the
+   body step at line-height 1.45. */
 .settings-status {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--s-tight);
   min-height: 19px;
 }
