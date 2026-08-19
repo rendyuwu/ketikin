@@ -123,6 +123,29 @@ Two things make it expensive to read correctly:
 Recovery is the ordinary bad-release path below. Expect the releases API to hold no release at
 all, so deleting the tag is the whole cleanup.
 
+### A Linux job that sits on `Install Linux dependencies` and never moves
+
+The last line in the log is an apt `Ign:` or `Get:` against `azure.archive.ubuntu.com`, and then
+nothing — for twenty minutes, an hour, however long you leave it.
+
+The runner images list that mirror first. When a runner's copy of it stops answering, apt has no
+timeout of its own for the `Packages` fetch and blocks rather than failing over, so the job burns
+runner time until GitHub's job timeout kills it. It is a coin flip per runner, not a code problem:
+the same job passes in four minutes on the next attempt, and the other jobs in the same run, which
+install the identical package list, go green alongside it.
+
+Like the `target_commitish` case above, this is a build that looks fine and produces nothing — but
+worse, because it does not fail. The workflow simply never finishes, `verify draft` never runs, and
+the release cannot be published until somebody notices and cancels it by hand.
+
+`.github/scripts/install-linux-deps.sh` is the guard: it repoints apt at `archive.ubuntu.com` and
+sets `Acquire::*::Timeout` and `Acquire::Retries`, and every job in both workflows carries a
+`timeout-minutes` sized off its observed runtime. If you see this failure mode again, it means the
+runner image moved its apt sources somewhere the script does not rewrite — check the step's output
+for `No apt source referenced azure.archive.ubuntu.com`, which says the repoint found nothing to do.
+
+Recovery is a re-run of the failed job. Nothing has been created, so there is nothing to clean up.
+
 ## How `latest.json` works
 
 `latest.json` is the update manifest. The updater in a running copy of Ketikin fetches it, compares

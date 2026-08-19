@@ -39,6 +39,11 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-22.04
+    # Observed 1-4 minutes warm, ~8 on a cold Rust cache. Every job in this file
+    # carries a bound because the GitHub default is 360 minutes, and a hung step
+    # — see the apt note below — otherwise burns all six hours before anyone is
+    # told it went wrong.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -65,10 +70,12 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # The script pins the apt mirror and gives apt a timeout; without those a
+      # stalled Azure mirror hangs this step indefinitely. The step bound is the
+      # backstop for anything the apt-level timeouts do not cover.
       - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ${{ env.LINUX_DEPS }}
+        timeout-minutes: 10
+        run: bash .github/scripts/install-linux-deps.sh ${{ env.LINUX_DEPS }}
 
       # tauri-build resolves `frontendDist` at compile time and fails if the
       # directory is absent, so clippy needs a real frontend build first — even
@@ -98,6 +105,8 @@ jobs:
   version-sync:
     name: version-sync
     runs-on: ubuntu-22.04
+    # A checkout and one shell script; it has never taken a whole minute.
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -111,6 +120,8 @@ jobs:
       - lint
       - version-sync
     runs-on: ${{ matrix.platform }}
+    # Observed 1-9 minutes per platform depending on cache warmth and runner.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -156,11 +167,11 @@ jobs:
           workspaces: src-tauri
           key: ${{ matrix.id }}
 
+      # See the note on the same step in `lint`.
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ${{ env.LINUX_DEPS }}
+        timeout-minutes: 10
+        run: bash .github/scripts/install-linux-deps.sh ${{ env.LINUX_DEPS }}
 
       - name: Install frontend dependencies
         run: npm ci

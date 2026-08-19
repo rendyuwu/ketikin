@@ -39,6 +39,11 @@ jobs:
   prepare:
     name: prepare
     runs-on: ubuntu-22.04
+    # A full-history checkout plus three shell steps; observed under a minute.
+    # Every job here is bounded for the same reason as in ci.yml, and it matters
+    # more on this path: a hung release job means the release cannot be
+    # published at all until a maintainer notices and cancels it by hand.
+    timeout-minutes: 10
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
@@ -154,6 +159,9 @@ jobs:
     name: release (${{ matrix.id }})
     needs: prepare
     runs-on: ${{ matrix.platform }}
+    # Observed 4-7 minutes per platform, build plus asset upload. The bound is
+    # per job, so serialising the matrix below does not need a larger one.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       # All four jobs upload into the SAME draft release, which tauri-action
@@ -201,11 +209,13 @@ jobs:
           workspaces: src-tauri
           key: ${{ matrix.id }}
 
+      # Pins the apt mirror and bounds apt's own waits; the runner image's
+      # default mirror can stall forever on the Packages fetch. Shared with
+      # ci.yml so the two paths cannot drift apart on this.
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ${{ env.LINUX_DEPS }}
+        timeout-minutes: 10
+        run: bash .github/scripts/install-linux-deps.sh ${{ env.LINUX_DEPS }}
 
       - name: Install frontend dependencies
         run: npm ci
@@ -246,6 +256,8 @@ jobs:
     # platform silently missing from latest.json. Run regardless and fail loudly.
     if: always()
     runs-on: ubuntu-22.04
+    # A handful of API calls against the draft; observed under a minute.
+    timeout-minutes: 10
     steps:
       # Runs only on the bad path. The draft is deliberately left in place —
       # deleting a release is the maintainer's call, not CI's.
