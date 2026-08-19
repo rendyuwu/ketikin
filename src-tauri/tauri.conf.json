@@ -1,0 +1,71 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Ketikin",
+  "version": "0.1.0",
+  "identifier": "com.rendyuwu.ketikin",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Ketikin",
+        "width": 560,
+        "height": 700,
+        "minWidth": 460,
+        "minHeight": 560,
+        "resizable": true,
+        "center": true,
+        "decorations": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "publisher": "rendyuwu",
+    "category": "Utility",
+    "homepage": "https://github.com/rendyuwu/ketikin",
+    "license": "MIT",
+    "licenseFile": "../LICENSE",
+    "shortDescription": "Cross-platform auto-typer",
+    "longDescription": "Simple cross-platform auto-typer for consoles that don't accept clipboard paste.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "both",
+        "languages": ["English"]
+      }
+    },
+    "macOS": {
+      "signingIdentity": "-",
+      "minimumSystemVersion": "10.15"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/rendyuwu/ketikin/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMwNkE5MkJGQkUxMDg0MDYKUldRR2hCQyt2NUpxTUVtZERHNy9rYWlYcXN3QkEybHNxandQRFUxaVBGdVNPQ1lpdWpmRmVFeFEK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

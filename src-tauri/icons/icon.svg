@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Rounded-square background -->
+  <rect width="1024" height="1024" rx="224" ry="224" fill="#2F6FED"/>
+
+  <!-- Keycap: outer plate -->
+  <rect x="208" y="248" width="608" height="528" rx="88" ry="88" fill="#FFFFFF"/>
+  <!-- Keycap: inset face, punched out so the blue reads as the bevel -->
+  <rect x="272" y="312" width="480" height="400" rx="56" ry="56" fill="#2F6FED"/>
+
+  <!-- Text cursor sitting on the keycap face: I-beam with a caret bar -->
+  <rect x="472" y="376" width="80" height="272" fill="#FFFFFF"/>
+  <rect x="392" y="376" width="240" height="52" fill="#FFFFFF"/>
+  <rect x="392" y="596" width="240" height="52" fill="#FFFFFF"/>
+</svg>

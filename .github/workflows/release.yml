@@ -1,0 +1,291 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build, e.g. v0.1.0"
+        required: true
+        type: string
+
+# Releases upload into a shared draft; never cancel one midway.
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+# Ketikin is a single public repo: source, release assets and the latest.json
+# updater manifest all live here, so the built-in GITHUB_TOKEN is sufficient.
+permissions:
+  contents: write
+
+env:
+  # Kept in step with ci.yml. No libxdo-dev: enigo 0.6 speaks the X11 protocol
+  # through x11rb and never links libxdo.
+  LINUX_DEPS: >-
+    libwebkit2gtk-4.1-dev
+    build-essential
+    curl
+    wget
+    file
+    libssl-dev
+    libayatana-appindicator3-dev
+    librsvg2-dev
+    patchelf
+
+jobs:
+  prepare:
+    name: prepare
+    runs-on: ubuntu-22.04
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      notes: ${{ steps.notes.outputs.notes }}
+    steps:
+      - name: Resolve and validate tag
+        id: tag
+        shell: bash
+        env:
+          # On `push` the dispatch input is empty and we fall back to the ref.
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf '::error::Tag "%s" is not strict semver. Expected vMAJOR.MINOR.PATCH, e.g. v0.1.0.\n' "$TAG" >&2
+            exit 1
+          fi
+          printf 'tag=%s\n' "$TAG" >> "$GITHUB_OUTPUT"
+          printf 'version=%s\n' "${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      # Check out the tag explicitly so a workflow_dispatch run started from
+      # main still builds the tagged commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+
+      # GitHub Actions substitutes an *empty string* for an undefined secret and
+      # offers no way to tell "unset" from "set to empty". Our signing key is
+      # generated without a password, so the password secret is legitimately
+      # empty — only the private key can be checked, and the password is treated
+      # as optional-with-default-empty.
+      - name: Verify signing secrets
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            {
+              printf '::error::Repository secret TAURI_SIGNING_PRIVATE_KEY is missing or empty.\n'
+              printf 'Generate a keypair with `npm run tauri -- signer generate -w ~/.tauri/ketikin.key`,\n'
+              printf 'then store the *private* key contents as the TAURI_SIGNING_PRIVATE_KEY secret and put\n'
+              printf 'the matching .pub contents into plugins.updater.pubkey in src-tauri/tauri.conf.json.\n'
+              printf 'Without it the updater cannot sign this release and clients will reject the update.\n'
+            } >&2
+            exit 1
+          fi
+          printf 'TAURI_SIGNING_PRIVATE_KEY is present.\n'
+
+      - name: Check tag matches all version files
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(bash .github/scripts/check-version-sync.sh "${{ steps.tag.outputs.version }}")"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        shell: bash
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # Everything between "## [X.Y.Z] - DATE" and the next "## [" heading
+          # (or the link-reference block that Keep a Changelog puts at the end).
+          # The heading is matched as a literal prefix rather than a regex so
+          # the dots in the version cannot act as wildcards.
+          notes="$(
+            awk -v prefix="## [${VERSION}]" '
+              !capture && substr($0, 1, length(prefix)) == prefix { capture = 1; next }
+              capture && /^## \[/ { exit }
+              capture && /^\[[^]]+\]:[[:space:]]*http/ { exit }
+              capture { print }
+            ' CHANGELOG.md
+          )"
+
+          # Trim leading and trailing blank lines.
+          notes="$(printf '%s\n' "$notes" | sed -e '/./,$!d' | tac | sed -e '/./,$!d' | tac)"
+
+          if [ -z "${notes//[[:space:]]/}" ]; then
+            printf '::error::CHANGELOG.md has no content under "## [%s]". Write the release notes before tagging.\n' "$VERSION" >&2
+            exit 1
+          fi
+
+          # Random delimiter: changelog text is untrusted with respect to the
+          # heredoc terminator.
+          delim="NOTES_$(openssl rand -hex 12)"
+          {
+            printf 'notes<<%s\n' "$delim"
+            printf '%s\n' "$notes"
+            printf '%s\n' "$delim"
+          } >> "$GITHUB_OUTPUT"
+
+          printf 'Release notes for %s:\n%s\n' "$VERSION" "$notes"
+
+  release:
+    name: release (${{ matrix.id }})
+    needs: prepare
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      # All four jobs upload into the SAME draft release, which tauri-action
+      # looks up by tagName. Running them concurrently races that lookup and can
+      # produce duplicate drafts, so serialise the matrix.
+      max-parallel: 1
+      matrix:
+        include:
+          - id: linux-x64
+            platform: ubuntu-22.04
+            rust-targets: ""
+            args: ""
+          - id: windows-x64
+            platform: windows-latest
+            rust-targets: ""
+            args: ""
+          - id: macos-x64
+            platform: macos-latest
+            rust-targets: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          - id: macos-arm64
+            platform: macos-latest
+            rust-targets: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.rust-targets }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.id }}
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ env.LINUX_DEPS }}
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # tagName and releaseName are identical across the matrix so tauri-action
+      # reuses the one draft instead of creating four. macOS bundles are ad-hoc
+      # signed (signingIdentity "-") — there is no Apple Developer account and
+      # deliberately no notarization step.
+      - name: Build and upload release assets
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseName: Ketikin ${{ needs.prepare.outputs.version }}
+          releaseBody: ${{ needs.prepare.outputs.notes }}
+          releaseCommitish: ${{ needs.prepare.outputs.tag }}
+          releaseDraft: true
+          prerelease: false
+          # v1.0.0 of tauri-action calls this input uploadUpdaterJson; the
+          # v0.5.x line called it includeUpdaterJson.
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
+          retryAttempts: 2
+          args: ${{ matrix.args }}
+
+  verify:
+    name: verify draft
+    needs:
+      - prepare
+      - release
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Validate draft release and updater manifest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          die() { printf '::error::%s\n' "$*" >&2; exit 1; }
+
+          releases="$(gh api "repos/${REPO}/releases" --paginate)"
+          matches="$(jq --arg tag "$TAG" '[.[] | select(.tag_name == $tag)]' <<<"$releases")"
+          count="$(jq 'length' <<<"$matches")"
+
+          [ "$count" -ne 0 ] || die "No release found for tag ${TAG}."
+          [ "$count" -eq 1 ] || die "Found ${count} releases for tag ${TAG}; the matrix raced and created duplicates. Delete the extras before publishing."
+
+          release="$(jq '.[0]' <<<"$matches")"
+          [ "$(jq -r '.draft' <<<"$release")" = "true" ] || die "Release ${TAG} is already published; this workflow only ever produces drafts."
+
+          asset_id="$(jq -r '.assets[] | select(.name == "latest.json") | .id' <<<"$release" | head -n1)"
+          [ -n "$asset_id" ] || die "Draft ${TAG} has no latest.json asset — the updater manifest was not generated."
+
+          gh api "repos/${REPO}/releases/assets/${asset_id}" \
+            -H 'Accept: application/octet-stream' > latest.json
+
+          jq -e . latest.json >/dev/null || die "latest.json is not valid JSON."
+
+          manifest_version="$(jq -r '.version // empty' latest.json)"
+          [ "$manifest_version" = "$VERSION" ] \
+            || die "latest.json declares version '${manifest_version}' but the tag is ${TAG} (expected ${VERSION})."
+
+          for platform in windows-x86_64 linux-x86_64 darwin-x86_64 darwin-aarch64; do
+            jq -e --arg p "$platform" 'has("platforms") and (.platforms | has($p))' latest.json >/dev/null \
+              || die "latest.json is missing platform key '${platform}' — that build did not upload."
+            jq -e --arg p "$platform" '.platforms[$p].signature | strings | length > 0' latest.json >/dev/null \
+              || die "latest.json entry '${platform}' has an empty signature."
+            jq -e --arg p "$platform" '.platforms[$p].url | strings | startswith("https://")' latest.json >/dev/null \
+              || die "latest.json entry '${platform}' has a missing or non-https url."
+          done
+
+          assets="$(jq '[.assets[].name]' <<<"$release")"
+          for suffix in .msi -setup.exe .AppImage .deb .dmg; do
+            jq -e --arg s "$suffix" 'any(.[]; endswith($s))' <<<"$assets" >/dev/null \
+              || die "Draft ${TAG} has no asset ending in '${suffix}'."
+          done
+
+          {
+            printf '## Ketikin %s draft release is ready\n\n' "$VERSION"
+            printf 'All four platform builds uploaded and `latest.json` validated:\n\n'
+            printf -- '- version `%s`\n' "$manifest_version"
+            printf -- '- signed entries for `windows-x86_64`, `linux-x86_64`, `darwin-x86_64`, `darwin-aarch64`\n'
+            printf -- '- installers present for Windows (.msi, -setup.exe), Linux (.AppImage, .deb) and macOS (.dmg)\n\n'
+            printf '### Assets\n\n'
+            jq -r '.[] | "- `" + . + "`"' <<<"$assets"
+            printf '\n> **The release is still a draft and must be published manually.**\n'
+            printf '> Until you publish it, `https://github.com/%s/releases/latest/download/latest.json`\n' "$REPO"
+            printf '> still resolves to the previous release, so existing installs will not see this update.\n'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities granted to the main Ketikin window. `core:default` is retained deliberately: it covers the event listen/unlisten the frontend actually uses, and hand-narrowing it would risk ACL failures that only surface at IPC call time. Everything else was removed as unused — the window, updater, process, opener and global-shortcut calls all happen in Rust, which bypasses the ACL entirely.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

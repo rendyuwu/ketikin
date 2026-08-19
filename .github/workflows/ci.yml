@@ -1,0 +1,225 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# A four-runner bundle matrix is expensive; never let a superseded push keep
+# burning minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only and, deliberately, secret-free: this workflow must run unchanged on
+# pull requests opened from forks, which receive no secrets at all.
+permissions:
+  contents: read
+
+env:
+  # The tray-icon feature needs libayatana-appindicator3-dev; the rest is the
+  # standard Tauri v2 Linux set. Deliberately no libxdo-dev: enigo 0.6 speaks
+  # the X11 protocol through x11rb and never links libxdo.
+  LINUX_DEPS: >-
+    libwebkit2gtk-4.1-dev
+    build-essential
+    curl
+    wget
+    file
+    libssl-dev
+    libayatana-appindicator3-dev
+    librsvg2-dev
+    patchelf
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Typecheck frontend
+        run: npm run typecheck
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ env.LINUX_DEPS }}
+
+      # tauri-build resolves `frontendDist` at compile time and fails if the
+      # directory is absent, so clippy needs a real frontend build first — even
+      # though we are not producing an installer here.
+      - name: Build frontend
+        run: npm run build
+
+      - name: Check Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+  version-sync:
+    name: version-sync
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Check version is in sync and changelogged
+        shell: bash
+        run: bash .github/scripts/check-version-sync.sh
+
+  bundle:
+    name: bundle (${{ matrix.id }})
+    needs:
+      - lint
+      - version-sync
+    runs-on: ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: linux-x64
+            platform: ubuntu-22.04
+            rust-targets: ""
+            args: ""
+            bundle-root: src-tauri/target/release/bundle
+          - id: windows-x64
+            platform: windows-latest
+            rust-targets: ""
+            args: ""
+            bundle-root: src-tauri/target/release/bundle
+          - id: macos-x64
+            platform: macos-latest
+            rust-targets: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+            bundle-root: src-tauri/target/x86_64-apple-darwin/release/bundle
+          - id: macos-arm64
+            platform: macos-latest
+            rust-targets: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+            bundle-root: src-tauri/target/aarch64-apple-darwin/release/bundle
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
+        with:
+          toolchain: stable
+          targets: ${{ matrix.rust-targets }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.id }}
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ env.LINUX_DEPS }}
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # REQUIRED — do not "simplify" this step away. With
+      # `createUpdaterArtifacts: true` and a pubkey set, a bundle build with no
+      # signing key is a hard failure ("A public key has been found, but no
+      # private key"), not a silent skip, so without this step the whole job
+      # fails. CI must also never hold the production secret (fork PRs get
+      # none), so mint a throwaway keypair per job and rewrite the config's
+      # pubkey to match it. Nothing signed here is published; release.yml uses
+      # the real key.
+      - name: Generate ephemeral updater signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Git Bash on Windows hands us a backslashed RUNNER_TEMP; normalise it.
+          tmp="$(cygpath -u "$RUNNER_TEMP" 2>/dev/null || printf '%s' "$RUNNER_TEMP")"
+          npx --yes @tauri-apps/cli signer generate --ci --force -w "$tmp/update.key"
+
+          pub="$(cat "$tmp/update.key.pub")"
+          [ -n "$pub" ] || { printf '::error::Ephemeral updater public key is empty.\n' >&2; exit 1; }
+
+          jq --arg pub "$pub" '.plugins.updater.pubkey = $pub' \
+            src-tauri/tauri.conf.json > src-tauri/tauri.conf.json.patched
+          mv src-tauri/tauri.conf.json.patched src-tauri/tauri.conf.json
+
+          # Tauri accepts either a path or the key itself in this variable; the
+          # key is a single base64 line, so passing the contents sidesteps every
+          # cross-platform path-quoting problem.
+          {
+            printf 'TAURI_SIGNING_PRIVATE_KEY<<EPHEMERAL_UPDATER_KEY\n'
+            cat "$tmp/update.key"
+            printf '\nEPHEMERAL_UPDATER_KEY\n'
+          } >> "$GITHUB_ENV"
+
+      # No release inputs => tauri-action builds the bundles and stops. It never
+      # touches the GitHub Releases API, so no token is needed.
+      - name: Build bundles
+        uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # v1.0.0
+        env:
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          args: ${{ matrix.args }}
+
+      - name: Verify expected bundles exist
+        shell: bash
+        run: bash .github/scripts/verify-bundles.sh "${{ matrix.bundle-root }}" "${{ matrix.id }}"
+
+      # The *.sig files are uploaded alongside the installers on purpose: they
+      # are the only proof the updater artifacts were actually signed, so a
+      # signing regression shows up on the PR instead of at tag time.
+      - name: Upload bundles
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ketikin-${{ matrix.id }}
+          path: |
+            ${{ matrix.bundle-root }}/appimage/*.AppImage
+            ${{ matrix.bundle-root }}/appimage/*.AppImage.sig
+            ${{ matrix.bundle-root }}/deb/*.deb
+            ${{ matrix.bundle-root }}/deb/*.deb.sig
+            ${{ matrix.bundle-root }}/rpm/*.rpm
+            ${{ matrix.bundle-root }}/rpm/*.rpm.sig
+            ${{ matrix.bundle-root }}/msi/*.msi
+            ${{ matrix.bundle-root }}/msi/*.msi.sig
+            ${{ matrix.bundle-root }}/nsis/*-setup.exe
+            ${{ matrix.bundle-root }}/nsis/*-setup.exe.sig
+            ${{ matrix.bundle-root }}/dmg/*.dmg
+            ${{ matrix.bundle-root }}/macos/*.app.tar.gz
+            ${{ matrix.bundle-root }}/macos/*.app.tar.gz.sig
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
