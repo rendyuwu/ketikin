@@ -5,6 +5,7 @@
 //! ignored rather than rejected, which keeps downgrades survivable too.
 
 use serde::{Deserialize, Serialize};
+use tauri::Theme;
 
 use crate::error::AppError;
 use crate::storage::Storage;
@@ -89,6 +90,27 @@ impl Settings {
         }
         if self.stop_hotkey.is_empty() {
             self.stop_hotkey = DEFAULT_STOP_HOTKEY.to_string();
+        }
+    }
+
+    /// The theme as the *window* wants it, rather than as the stylesheet does.
+    ///
+    /// `theme` drives two separate things that are easy to mistake for one. The
+    /// frontend puts it on `documentElement.dataset.theme`, which reaches the
+    /// custom properties and `color-scheme` — both scoped to WebView content.
+    /// The native frame around that content is drawn by the OS and hears
+    /// nothing about it, which is why a light window used to sit under a black
+    /// titlebar. This is the value that gets pushed at the frame.
+    ///
+    /// `None` is not "unknown", it is the instruction that makes the window
+    /// track the OS appearance live — so `"system"` maps to it deliberately,
+    /// and so does anything unrecognised, matching what [`Settings::normalize`]
+    /// would have rewritten the field to anyway.
+    pub fn window_theme(&self) -> Option<Theme> {
+        match self.theme.as_str() {
+            "light" => Some(Theme::Light),
+            "dark" => Some(Theme::Dark),
+            _ => None,
         }
     }
 
@@ -220,6 +242,32 @@ mod tests {
         normalized.normalize();
 
         assert_eq!(original, normalized);
+    }
+
+    /// Every value the UI can produce must reach the native frame, including
+    /// the one that means "stop deciding": `None` is what makes the window
+    /// follow the OS, so mapping `"system"` to `Some(_)` would freeze the frame
+    /// at whatever the appearance happened to be on the last save.
+    #[test]
+    fn every_theme_setting_maps_onto_a_window_theme() {
+        let with = |theme: &str| {
+            Settings {
+                theme: theme.to_string(),
+                ..Settings::default()
+            }
+            .window_theme()
+        };
+
+        assert_eq!(with("light"), Some(Theme::Light));
+        assert_eq!(with("dark"), Some(Theme::Dark));
+        assert_eq!(with("system"), None);
+
+        // `normalize` rewrites anything else to `"system"`, so the fallback here
+        // only covers a value that reached this call without passing through it.
+        assert_eq!(with("neon"), None);
+
+        // The default must not pin the frame either.
+        assert_eq!(Settings::default().window_theme(), None);
     }
 
     #[test]

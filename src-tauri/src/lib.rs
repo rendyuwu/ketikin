@@ -418,6 +418,14 @@ fn hotkey_status(state: State<'_, AppState>) -> HotkeyStatus {
 // ---------------------------------------------------------------------------
 
 /// Push the window-affecting settings onto the live window.
+///
+/// Called from `setup` and from [`save_settings`], which is what makes a stored
+/// theme apply at launch rather than only after the user touches the control.
+///
+/// Safe from a worker even though `save_settings` is `(async)`: both setters
+/// hand a message to the event loop and return, rather than blocking on it, so
+/// neither can deadlock against a main thread waiting on one of our locks. See
+/// [`AppState`] for the rule they have to satisfy.
 fn apply_window_settings(app: &AppHandle, settings: &Settings) {
     let Some(window) = app.get_webview_window("main") else {
         return;
@@ -425,6 +433,14 @@ fn apply_window_settings(app: &AppHandle, settings: &Settings) {
 
     if let Err(err) = window.set_always_on_top(settings.always_on_top) {
         log::warn!("window: could not set always-on-top: {err}");
+    }
+
+    // The frontend's `data-theme` only reaches WebView content; the titlebar is
+    // the OS's, and this is the only thing that tells it anything. On Linux the
+    // frame belongs to the window manager, so this is a request the WM is free
+    // to ignore — which is why a failure is a debug line and not a warning.
+    if let Err(err) = window.set_theme(settings.window_theme()) {
+        log::debug!("window: could not set the theme: {err}");
     }
 }
 
