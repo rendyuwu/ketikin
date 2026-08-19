@@ -12,7 +12,13 @@
 
   --text: #1a1a18;
   --text-muted: #6a6a64;
-  --text-faint: #6F6F67;
+  /* Pinned to the WCAG AA floor, not picked by eye. This token carries every
+     field hint, placeholder, section label and the hotkey capture prompt, all
+     rendered well under 18px, where the minimum is 4.5:1 — so lightening it by
+     a shade to "calm it down" puts most of the explanatory copy in the app back
+     under the line. The values it replaced did exactly that: #8d8d86 measured
+     3.34:1 on white and #7c7c75 measured 4.23:1 on the dark --bg. */
+  --text-faint: #6f6f67; /* 5.07:1 on --bg, 4.64:1 on --bg-sunken */
 
   --accent: #2f5ed0;
   --accent-hover: #2a53ba;
@@ -65,7 +71,7 @@
 
     --text: #e7e7e4;
     --text-muted: #9b9b94;
-    --text-faint: #8A8A82;
+    --text-faint: #8a8a82; /* 5.11:1 on --bg, 4.74:1 on --bg-sunken */
 
     --accent: #4670d8;
     --accent-hover: #567edf;
@@ -502,6 +508,24 @@ body {
 .toggle-input:checked + .toggle-track .toggle-thumb {
   background: var(--accent-fg);
   transform: translateX(14px);
+}
+
+/* The on state has to be readable without perceiving the accent fill, so it is
+   carried by shape too: the thumb takes a tick. The thumb already travels, but
+   it also flips from near-black to white in the dark theme, so colour was doing
+   most of the signalling. Two rotated borders rather than an icon, because this
+   project ships no icon dependency. The transform is static, so the
+   reduced-motion block — which only zeroes durations — cannot erase it. */
+.toggle-input:checked + .toggle-track .toggle-thumb::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 7px;
+  height: 4px;
+  border-bottom: 1.5px solid var(--accent);
+  border-left: 1.5px solid var(--accent);
+  transform: rotate(-45deg);
 }
 
 .toggle-input:focus-visible + .toggle-track {
