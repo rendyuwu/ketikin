@@ -98,6 +98,31 @@ All four platform builds must succeed:
 If any one of them fails, do not publish a partial release — see
 [When a release is bad](#when-a-release-is-bad).
 
+## Failure modes worth recognising
+
+### `Validation Failed: … "field":"target_commitish"`
+
+```
+Validation Failed: {"resource":"Release","code":"invalid","field":"target_commitish"}
+```
+
+Every platform job fails with this, at the same place, *after* its bundle has already been built.
+
+`tauri-action` forwards its `releaseCommitish` input to the create-release API's
+`target_commitish`, which accepts a branch name or a commit SHA and rejects a tag name outright.
+The workflow's `prepare` job resolves the tag to its commit and passes that SHA precisely so this
+cannot happen; the error means something has put a tag back in that input.
+
+Two things make it expensive to read correctly:
+
+- **Nothing was kept.** All four builds go green and are then discarded when release creation
+  fails. Roughly 40 minutes of runner time reports success and produces no assets.
+- **CI cannot catch it.** The `bundle` jobs in `ci.yml` build the same artifacts but never create
+  a release, so they pass on a workflow that would fail here.
+
+Recovery is the ordinary bad-release path below. Expect the releases API to hold no release at
+all, so deleting the tag is the whole cleanup.
+
 ## How `latest.json` works
 
 `latest.json` is the update manifest. The updater in a running copy of Ketikin fetches it, compares
@@ -164,9 +189,14 @@ enabled will start picking it up on their next check.
 If a build failed, an artifact is missing a signature, or you spot a problem after publishing, the
 recovery is to remove the release and tag, fix the cause, and re-tag.
 
-1. **Delete the GitHub release.** On the release page, choose Delete. If it was already published,
-   delete it promptly — anything already downloaded by an updater is out of your hands, which is
-   the reason for the pre-publish checks.
+1. **Delete the GitHub release, if there is one.** On the release page, choose Delete. If it was
+   already published, delete it promptly — anything already downloaded by an updater is out of
+   your hands, which is the reason for the pre-publish checks.
+
+   Do not treat a missing release as a second problem to investigate. A run that failed at or
+   before release creation — the `target_commitish` case above is exactly this — leaves no release
+   behind at all, and the releases API returns nothing for the tag. Then the tag is the only thing
+   to clean up, and step 2 is the whole recovery.
 
 2. **Delete the tag**, locally and on the remote:
 
