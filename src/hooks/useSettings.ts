@@ -73,8 +73,10 @@ export function useSettings(): UseSettings {
     } catch (err) {
       if (mounted.current) setError({ kind: "save", message: errorMessage(err) });
     } finally {
-      // The backend expires any outstanding hotkey suspend on save, whether or
-      // not it succeeded, so this has to run on both paths.
+      // Not because the backend drops the suspend — `hotkeys::apply` snapshots
+      // it and puts it back. It runs on both paths because a save touches the
+      // registrations either way, so whether the suspend is still held should
+      // not depend on how the save turned out. See `reassertCapture`.
       reassertCapture();
     }
   }, [apply, cancelPendingSave]);

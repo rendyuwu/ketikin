@@ -158,7 +158,9 @@ Ketikin ignores them rather than trapping you — see
 
 `settings.json` is rewritten whenever a setting changes. Keys that are missing or unrecognised
 fall back to the defaults above, so a file written by an older version — or one you edited by hand
-— still loads. Values outside the ranges above are clamped when saved.
+— still loads. Values outside the ranges above are clamped on load as well as on save, so a
+hand-edited file cannot put Ketikin into a state the interface has no way to show you. The one
+check that runs only on save is the rule that the start and stop hotkeys must differ.
 
 ## Global hotkeys
 
@@ -260,16 +262,29 @@ picked.
    - macOS: `~/Library/Application Support/com.rendyuwu.ketikin`
 2. **`%APPDATA%`** — Windows only, read directly from the environment variable.
 3. **`%LOCALAPPDATA%`** — Windows only, read directly from the environment variable.
-4. **A `data` folder next to the Ketikin executable** — for portable installs and locked-down
-   machines where the user profile is off limits.
+4. **A `data` folder next to the Ketikin executable** — for portable and per-user installs, where
+   the executable sits somewhere you can write.
 5. **The system temp directory** — a last resort. Data stored here may not survive a reboot.
 
-Worth being honest about one of these: on Windows the first candidate already lives inside
-`%APPDATA%`, so candidate 2 is not really an independent second chance — if `%APPDATA%` is missing
-or unwritable, the first two usually fail together. The genuine recovery comes from the last three:
-`%LOCALAPPDATA%` is a different root that survives when the roaming profile does not, the folder
-beside the executable works when the profile is off limits entirely, and temp is the final
-backstop.
+Worth being honest about how independent those five actually are, because on Windows several of
+them share a fate:
+
+- **Candidates 1 and 2 are the same place.** On Windows the OS application-data directory *is*
+  `%APPDATA%`, so candidate 2 is not a second chance — if `%APPDATA%` is missing or unwritable,
+  both fail together.
+- **Candidate 5 is not independent of candidate 3 on Windows.** The system temp directory normally
+  resolves to `%LOCALAPPDATA%\Temp`, which sits *inside* the candidate 3 root. If `%LOCALAPPDATA%`
+  was rejected because of its permissions, temp is likely to be rejected for the same reason. On
+  Linux and macOS temp genuinely is a separate location (`/tmp`), so there it is a real backstop.
+- **Candidate 4 depends on how Ketikin was installed.** A per-user install puts the executable
+  inside your own profile, so a `data` folder beside it is writable. A per-machine install puts it
+  in `C:\Program Files\Ketikin`, where a standard user cannot create one — so on a machine-wide
+  install this candidate is unavailable too.
+
+The chain is therefore genuinely five deep on Linux and macOS, and shorter than it looks on a
+locked-down Windows machine. What it reliably buys you there is candidate 3: `%LOCALAPPDATA%` is a
+different root on local disk that keeps working when the *roaming* profile is redirected, offline,
+or read-only.
 
 Writes are atomic: Ketikin writes to a temporary file first and then renames it into place. That
 means a crash, a power loss, or a full disk *while saving* leaves your previous file intact rather
@@ -280,20 +295,44 @@ damaged.
 If every location in the chain fails, Ketikin does not crash. It keeps running with your settings
 and templates held in memory for the session, and warns you that nothing will be persisted.
 
-That last-three fallback is the reason Ketikin works on **Windows Server, RDP session hosts, and
-roaming-profile setups**, where the roaming profile directory is frequently unavailable,
-redirected, or read-only. On a normal desktop you will never notice it; on a jump box you will.
+This is the part to be realistic about on **Windows Server, RDP session hosts, and roaming-profile
+setups**. Two different things go wrong on those machines, and Ketikin handles them differently:
+
+- **A broken roaming profile** — redirected to an unavailable share, offline, or read-only — is
+  handled cleanly and invisibly. `%LOCALAPPDATA%` is on local disk and unaffected, so Ketikin lands
+  on candidate 3 and everything works normally. This is the common case, and it is the one the
+  fallback chain reliably carries.
+- **A profile you have no write access to at all** is not something Ketikin can work around. If
+  policy denies both `%APPDATA%` and `%LOCALAPPDATA%`, the remaining candidates go with them on a
+  per-machine install: `C:\Program Files\Ketikin\data` needs rights a standard user does not have,
+  and temp lives inside the `%LOCALAPPDATA%` that was just refused. Ketikin ends up in in-memory
+  mode.
+
+The improvement is that the second case is *visible*. Ketikin still starts and still types, and it
+tells you outright that nothing is being saved — rather than appearing to save and silently
+discarding everything, which is what its predecessor did on exactly these machines.
+
+If you are deploying to a locked-down host and want the on-disk fallback to actually be there,
+**install per-user rather than per-machine**. That puts the executable inside the user's own
+profile, which makes the `data` folder beside it writable and gives the chain a real fourth step.
+On a normal desktop none of this ever comes up; the first candidate wins and the rest never runs.
 
 ### Checking where your data went
 
 **Settings > Storage is the authoritative view.** It shows the path that was actually resolved,
 which entry in the chain produced it, and any notices attached to that location.
 
-A warning banner is deliberately narrower than that. It appears only for the two conditions that
-are always broken:
+A warning banner is deliberately narrower than that. It appears for three things:
 
 - **The system temp directory**, where data may not survive a reboot.
 - **In-memory mode**, where nothing is saved at all.
+- **A file that had to be reset.** If `settings.json` or `templates.json` cannot be read, Ketikin
+  starts from defaults and raises the banner — on *any* storage location, including a completely
+  healthy one. The unreadable file is renamed and kept rather than deleted, and the notice names
+  what it was kept as, so you can recover its contents by hand.
+
+The first two are about *where* your data is going. The third is about data you already had, which
+is why it raises the banner even when the storage location itself is fine.
 
 Running from the `data` folder beside the executable does *not* raise a banner, because that is a
 perfectly valid portable deployment rather than a fault — warning on every launch of a working

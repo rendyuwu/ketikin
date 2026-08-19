@@ -1,4 +1,4 @@
-import type { NewlineMode, StorageInfo, StorageSource } from "./types";
+import type { StorageInfo, StorageSource } from "./types";
 
 /** Rough platform sniff — the OS plugin isn't a dependency and isn't worth one. */
 const IS_MAC = /Mac|iPhone|iPad|iPod/i.test(
@@ -7,24 +7,53 @@ const IS_MAC = /Mac|iPhone|iPad|iPod/i.test(
 
 export const formatCount = (n: number): string => n.toLocaleString();
 
+/** Occurrences of a global pattern. `String.match` resets `lastIndex` itself. */
+const countMatches = (text: string, pattern: RegExp): number =>
+  text.match(pattern)?.length ?? 0;
+
+/** `normalize_text` collapses these to a single `\n`; a lone `\r` is already one. */
+const CRLF = /\r\n/g;
+
+/** Two UTF-16 units to JavaScript, one `char` to Rust. */
+const SURROGATE_PAIR = /[\uD800-\uDBFF][\uDC00-\uDFFF]/g;
+
 /**
- * Keystrokes the backend will actually send. Line breaks cost one keystroke in
- * `enter`/`shiftEnter` mode and nothing at all in `skip` mode.
+ * Characters the backend will step through, and therefore exactly the number it
+ * reports as `TypingState.total`.
+ *
+ * Mirrors `normalize_text` + `chars().count()` in `src-tauri/src/typing.rs`,
+ * subtracting rather than rebuilding the string so a million-character paste
+ * doesn't allocate a copy of itself on every keystroke:
+ * - CRLF collapses to LF, so each `\r\n` costs one character, not two.
+ * - Rust counts Unicode scalar values, so an astral character (emoji) is one
+ *   there and two units of `.length` here.
+ *
+ * The CR arithmetic is belt and braces — a DOM textarea's `.value` is
+ * spec-normalised to LF — but text can also reach us from a template.
  */
-export function keystrokeCount(text: string, mode: NewlineMode): number {
-  const normalized = text.replace(/\r\n/g, "\n");
-  return mode === "skip"
-    ? normalized.replace(/\n/g, "").length
-    : normalized.length;
+export function typedCharCount(text: string): number {
+  return (
+    text.length - countMatches(text, CRLF) - countMatches(text, SURROGATE_PAIR)
+  );
 }
 
+/**
+ * Wall-clock estimate for a run.
+ *
+ * Deliberately takes no `NewlineMode`: the backend's run loop sleeps
+ * `typingDelayMs` after *every* character in every mode. `skip` only makes
+ * `send_char` return without pressing anything for `\n` — the character is
+ * still counted and still slept on (`src-tauri/src/typing.rs`, the
+ * `for ch in text.chars()` loop). So skipping line breaks makes a run no
+ * shorter, and pretending otherwise under-promised a 4000-line paste by
+ * minutes.
+ */
 export function estimateMs(
   text: string,
-  mode: NewlineMode,
   typingDelayMs: number,
   startDelaySecs: number,
 ): number {
-  return startDelaySecs * 1000 + keystrokeCount(text, mode) * typingDelayMs;
+  return startDelaySecs * 1000 + typedCharCount(text) * typingDelayMs;
 }
 
 export function formatDuration(ms: number): string {
@@ -67,6 +96,27 @@ export const describeStorage = (info: StorageInfo): string =>
  */
 export const isStorageUnreliable = (info: StorageInfo): boolean =>
   !info.writable || info.source === "temp" || info.source === "memory";
+
+/**
+ * Whether two storage reads describe the same condition, field for field.
+ *
+ * `storage_info()` and `storage://warning` report the same state through two
+ * channels that land ~1.5s apart, so identity is what tells a redundant repeat
+ * apart from a genuinely new problem — and therefore whether a dismissal of the
+ * banner still applies.
+ */
+export function sameStorage(a: StorageInfo | null, b: StorageInfo): boolean {
+  return (
+    a !== null &&
+    a.path === b.path &&
+    a.source === b.source &&
+    a.writable === b.writable &&
+    a.error === b.error &&
+    a.degraded === b.degraded &&
+    a.notices.length === b.notices.length &&
+    a.notices.every((notice, i) => notice === b.notices[i])
+  );
+}
 
 const MODIFIER_LABELS: Record<string, string> = {
   CommandOrControl: IS_MAC ? "⌘" : "Ctrl",

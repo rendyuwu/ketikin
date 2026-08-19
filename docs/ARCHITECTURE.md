@@ -61,15 +61,30 @@ candidates, uses the first one it can successfully write to, and remembers the c
    `~/.local/share/com.rendyuwu.ketikin`, `~/Library/Application Support/com.rendyuwu.ketikin`)
 2. `%APPDATA%` — Windows, read directly from the environment
 3. `%LOCALAPPDATA%` — Windows, read directly from the environment
-4. A `data` folder beside the executable — portable and locked-down installs
+4. A `data` folder beside the executable — portable and per-user installs
 5. The system temp directory — last resort, may not survive a reboot
 
-Candidate 2 is close to redundant on Windows: candidate 1 resolves to a subdirectory of `%APPDATA%`
-already, so if `%APPDATA%` is unwritable or unset, both usually fail together. The meaningful
-recovery comes from candidates 3, 4, and 5 — a different root, a directory beside the executable,
-or temp. That is what carries Windows Server, RDP session hosts, and roaming-profile environments,
-where the roaming profile is regularly redirected, unavailable, or read-only. On an ordinary
-desktop the first candidate wins and the rest never runs.
+The chain is shallower than five entries suggests, because on Windows several candidates share a
+failure mode:
+
+- Candidate 1 already resolves to a subdirectory of `%APPDATA%`, so candidate 2 adds nothing there:
+  if `%APPDATA%` is unwritable or unset, both fail together.
+- Candidate 5 is not independent of candidate 3 on Windows. `std::env::temp_dir()` goes through
+  `GetTempPath()`, which normally yields `%LOCALAPPDATA%\Temp` — inside the candidate 3 root. An
+  ACL that rejects candidate 3 will usually reject temp for the same reason. On Linux and macOS
+  `/tmp` is a genuinely separate location, so there candidate 5 is a real backstop. This is also
+  why candidates 2 and 3 are not `#[cfg]`-gated to Windows: leaving them in the list on every
+  platform keeps the fallback path exercised on developer machines.
+- Candidate 4 is install-dependent. `tauri.conf.json` sets `nsis.installMode: "both"`, so a
+  per-machine install resolves it to `C:\Program Files\Ketikin\data`, which a standard user cannot
+  create. It is only a real candidate for portable and per-user installs.
+
+So the recovery that genuinely carries Windows Server, RDP session hosts, and roaming-profile
+environments is candidate 3: a different root on local disk that survives when the roaming profile
+is redirected, unavailable, or read-only. When the profile is denied outright, the tail of the
+chain goes with it and storage lands in in-memory mode — degraded, but announced rather than
+silent, which is the property that matters. On an ordinary desktop the first candidate wins and
+the rest never runs.
 
 Writes are **atomic**: serialize to a temporary file in the target directory, flush, then rename
 over the destination. The guarantee this buys is that a crash, power loss, or full disk *during a
@@ -82,12 +97,21 @@ error. The app runs normally for the session and nothing is persisted. Refusing 
 the wrong behaviour for a tool whose main job — typing into another window — does not need the disk.
 
 Storage reports its result as a path, the chain entry that produced it, an optional error, and a
-list of notices. The UI splits that into two channels deliberately. The **banner** fires only for
-temp and in-memory, which are always failures. Running from the folder beside the executable does
-not raise one — it is a supported portable deployment, and warning on every launch of a working
-install would train users to dismiss warnings. Its notices, including that the location may be
-shared with other users and that the resolved directory can depend on elevation, surface in
-**Settings > Storage**, which is the complete view.
+list of notices. The UI splits that into two channels deliberately, and `StorageInfo::degraded` is
+the single owner of the rule — derived in `Storage::info()` rather than stored, so it cannot go
+stale behind a later notice, and consumed by the frontend directly rather than reconstructed from
+`source` / `writable` / `notices`.
+
+The **banner** fires for three things: the temp directory, in-memory mode, and any notice flagged
+alarming. Today the only alarming notices are the temp location warning and a JSON file that had to
+be reset — the latter fires on *any* source, including a healthy `appData`, because it means data
+the user already had is gone. Deliberately it is *not* "notices is non-empty". Running from the
+folder beside the executable always carries notices but raises no banner: it is a supported
+portable deployment, and warning on every launch of a working install would train users to dismiss
+warnings. Those notices — that the location may be shared with other users, and that the resolved
+directory can depend on elevation — surface in **Settings > Storage**, which is the complete view.
+Failure to create the `logs/` subdirectory is likewise Settings-only: it costs diagnosability, not
+data.
 
 Logging is anchored to the same resolved directory in a `logs/` subdirectory, so it follows the
 chain wherever it lands. Two consequences: in-memory mode has no log at all, since logging falls

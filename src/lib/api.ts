@@ -7,6 +7,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type {
   HotkeyError,
+  HotkeyStatus,
   Settings,
   StorageInfo,
   Template,
@@ -61,6 +62,8 @@ export const storageInfo = () => invoke<StorageInfo>("storage_info");
 export const openDataFolder = () => invoke<void>("open_data_folder");
 
 export const trayStatus = () => invoke<TrayStatus>("tray_status");
+
+export const hotkeyStatus = () => invoke<HotkeyStatus>("hotkey_status");
 
 export const suspendHotkeys = () => invoke<void>("suspend_hotkeys");
 

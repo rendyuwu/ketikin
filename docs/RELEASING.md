@@ -129,9 +129,15 @@ Go through this list on the draft release before touching the Publish button.
    Confirm there is an entry for Windows x64, Linux x64, macOS x64, and macOS arm64, that each URL
    points at an asset that actually exists on this release, and that the `version` field matches
    the tag.
-2. **Every artifact has its `.sig` uploaded.** Each installer or bundle that the updater serves
-   must have a matching signature file in the release assets. An artifact without a signature
+2. **Every artifact the updater serves has its `.sig` uploaded.** That means the `.msi`, the NSIS
+   `-setup.exe`, the `.AppImage`, and the macOS `.app.tar.gz`. An artifact without a signature
    cannot be installed by the updater.
+
+   Do **not** read a missing `.sig` beside the `.dmg` or the `.rpm` as a fault. Neither is an
+   updater target — the `.dmg` is a manual-download format and the `.rpm` cannot self-install, as
+   described under [Linux: only the AppImage self-updates](../README.md#linux-only-the-appimage-self-updates)
+   — so the bundler never signs them. The authoritative check is the one below: if every platform
+   entry in `latest.json` carries a non-empty signature, the updater has everything it needs.
 3. **The version numbers agree.** The tag, the version in `latest.json`, and the version shown by
    the built app should all be the same.
 4. **The release notes are right.** They should be the `### Added` / `### Fixed` content from the
@@ -204,11 +210,21 @@ granted permissions. Data saves fine; no log is ever written. Settings > Storage
 when file logging is unavailable, and carries the resolved path, the fallback source, the error,
 and any notices. A screenshot of that panel is the substitute for the log.
 
-**Do not use the banner as your signal.** It only fires for temp and in-memory, the two conditions
-that are always broken. Running from the folder beside the executable is a supported portable
-deployment and shows no banner, but it does carry notices in Settings > Storage — that the
-location may be shared with other users, and that the resolved directory can depend on elevation.
-So "no banner" does not mean "nothing to see"; always ask for the panel, not the banner.
+**Do not use the banner as your signal, in either direction.** It fires for three things: the temp
+directory, in-memory mode, and a `settings.json` or `templates.json` that could not be read and had
+to be reset to defaults.
+
+That third one is worth recognising on sight, because it is the only one that says nothing about
+*where* the data went — it fires on a perfectly healthy `appData` path and means the user has
+already lost something. The notice names the backup the unreadable file was renamed to, so a
+"my templates all disappeared" report is often recoverable by hand from that file. Do not file it
+under storage problems.
+
+In the other direction, "no banner" does not mean "nothing to see". Running from the folder beside
+the executable is a supported portable deployment and shows no banner, but it does carry notices in
+Settings > Storage — that the location may be shared with other users, and that the resolved
+directory can depend on elevation. A `logs/` subdirectory that could not be created is also
+Settings-only. Always ask for the panel, not the banner.
 
 **`ketikin-startup-error.log`** is written into the resolved directory when startup fails before a
 window can exist — the case where there is no UI to show an error and, on Windows, no console

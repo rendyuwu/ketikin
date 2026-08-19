@@ -2,11 +2,15 @@ import { useEffect, useRef } from "react";
 
 import { CloseIcon } from "../components/Banner";
 import { NumberInput } from "../components/NumberInput";
-import { estimateMs, formatCount, formatDuration } from "../lib/format";
+import {
+  estimateMs,
+  formatCount,
+  formatDuration,
+  typedCharCount,
+} from "../lib/format";
 import {
   DELAY_MAX,
   DELAY_MIN,
-  type NewlineMode,
   type TypingDone,
   type TypingState,
 } from "../lib/types";
@@ -16,7 +20,6 @@ type TypePanelProps = {
   onTextChange: (text: string) => void;
   typingDelayMs: number;
   startDelaySecs: number;
-  newlineMode: NewlineMode;
   onDelayChange: (ms: number) => void;
   state: TypingState;
   result: TypingDone | null;
@@ -37,7 +40,6 @@ export function TypePanel({
   onTextChange,
   typingDelayMs,
   startDelaySecs,
-  newlineMode,
   onDelayChange,
   state,
   result,
@@ -54,9 +56,11 @@ export function TypePanel({
 
   const idle = state.phase === "idle";
   const canStart = text.trim().length > 0 && !starting;
-  const characters = text.length;
+  // The backend's own count, so this agrees with the `state.total` the progress
+  // bar is measured against rather than sitting a few characters away from it.
+  const characters = typedCharCount(text);
   const estimate = formatDuration(
-    estimateMs(text, newlineMode, typingDelayMs, startDelaySecs),
+    estimateMs(text, typingDelayMs, startDelaySecs),
   );
   const percent =
     state.total > 0 ? Math.min(100, (state.typed / state.total) * 100) : 0;

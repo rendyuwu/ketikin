@@ -7,6 +7,7 @@ import { useTyping } from "./hooks/useTyping";
 import { useUpdater } from "./hooks/useUpdater";
 import {
   errorMessage,
+  hotkeyStatus,
   onHotkeyError,
   onHotkeyStart,
   onHotkeyStop,
@@ -16,13 +17,16 @@ import {
   subscribe,
   trayStatus,
 } from "./lib/api";
-import { formatCount, isStorageUnreliable } from "./lib/format";
-import type { StorageInfo, TypingState } from "./lib/types";
+import { formatCount, isStorageUnreliable, sameStorage } from "./lib/format";
+import type { HotkeyError, StorageInfo, TypingState } from "./lib/types";
 import { SettingsPanel } from "./panels/SettingsPanel";
 import { TemplatesPanel } from "./panels/TemplatesPanel";
 import { TypePanel } from "./panels/TypePanel";
 
 type TabId = "type" | "templates" | "settings";
+
+/** The two hotkey slots, named by the wire type rather than restated. */
+type Which = HotkeyError["which"];
 
 const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
   { id: "type", label: "Type" },
@@ -55,10 +59,25 @@ export default function App() {
   const [storageDismissed, setStorageDismissed] = useState(false);
   const [trayMessage, setTrayMessage] = useState<string | null>(null);
   const [trayError, setTrayError] = useState<string | null>(null);
-  const [hotkeyErrors, setHotkeyErrors] = useState<{
-    start: string | null;
-    stop: string | null;
-  }>({ start: null, stop: null });
+  const [hotkeyErrors, setHotkeyErrors] = useState<Record<Which, string | null>>(
+    { start: null, stop: null },
+  );
+
+  // Which slots have had their error state decided since mount — by an event,
+  // or by the user recapturing. `hotkey://error` describes a failure happening
+  // now, so it always wins. `hotkey_status()` is the backfill for the errors
+  // emitted during the backend's `setup`, before any listener could exist, so
+  // it may only fill slots nothing has spoken for yet, and neither clobbers
+  // the other.
+  //
+  // The backend clears a slot's failure on a successful rebind, so the poll
+  // cannot carry a stale error. This guards the narrower thing the backend
+  // can't see: its snapshot was taken before an event that has already landed
+  // here, or before the user cleared the field by recapturing.
+  const hotkeySettled = useRef<Record<Which, boolean>>({
+    start: false,
+    stop: false,
+  });
 
   const settings = useSettings();
   const templates = useTemplates();
@@ -80,6 +99,25 @@ export default function App() {
     document.documentElement.dataset.theme = settings.settings.theme;
   }, [settings.settings.theme]);
 
+  const noteHotkeyError = useCallback((err: HotkeyError) => {
+    hotkeySettled.current[err.which] = true;
+    setHotkeyErrors((prev) => ({ ...prev, [err.which]: err.message }));
+  }, []);
+
+  const backfillHotkeyErrors = useCallback((failures: HotkeyError[]) => {
+    const pending = failures.filter(
+      (failure) => !hotkeySettled.current[failure.which],
+    );
+    if (pending.length === 0) return;
+    setHotkeyErrors((prev) => {
+      const next = { ...prev };
+      // At most one entry per slot by contract — the backend collapses to the
+      // latest, so a stale release failure never sits behind a fresh one.
+      for (const failure of pending) next[failure.which] = failure.message;
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     let alive = true;
 
@@ -92,17 +130,27 @@ export default function App() {
     const noteTray = (message: string) =>
       setTrayMessage((previous) => previous ?? message);
 
+    // Latest storage payload from either channel. `storage_info()` and
+    // `storage://warning` are two views of one backend state that land ~1.5s
+    // apart, so identity is what tells a redundant repeat apart from a new
+    // problem — and therefore whether a dismissal still applies. Resetting the
+    // flag unconditionally popped the banner straight back up on anyone who
+    // dismissed it inside that window.
+    let seenStorage: StorageInfo | null = null;
+    const noteStorage = (info: StorageInfo) => {
+      if (!sameStorage(seenStorage, info)) setStorageDismissed(false);
+      seenStorage = info;
+      setStorage(info);
+    };
+
     const unsubscribe = subscribe([
-      onStorageWarning((info) => {
-        setStorage(info);
-        setStorageDismissed(false);
-      }),
+      onStorageWarning((info) => noteStorage(info)),
       onTrayUnavailable(({ message }) => noteTray(message)),
     ]);
 
     storageInfo()
       .then((info) => {
-        if (alive) setStorage(info);
+        if (alive) noteStorage(info);
       })
       .catch((err: unknown) => {
         if (alive) setStorageError(errorMessage(err));
@@ -116,11 +164,22 @@ export default function App() {
         if (alive) setTrayError(errorMessage(err));
       });
 
+    hotkeyStatus()
+      .then(({ failures }) => {
+        if (alive) backfillHotkeyErrors(failures);
+      })
+      .catch(() => {
+        // Deliberately silent. Nothing here is recoverable by the user, and a
+        // rejection means the IPC bridge itself is down — in which case
+        // `get_settings` has already failed and is showing a banner about it.
+        // A second banner would only report the same outage twice.
+      });
+
     return () => {
       alive = false;
       unsubscribe();
     };
-  }, []);
+  }, [backfillHotkeyErrors]);
 
   useEffect(
     () =>
@@ -128,18 +187,17 @@ export default function App() {
         onHotkeyStart(() => beginTyping(textRef.current)),
         // The backend has already stopped; just resynchronise the UI.
         onHotkeyStop(() => refreshTyping()),
-        onHotkeyError((err) =>
-          setHotkeyErrors((prev) => ({ ...prev, [err.which]: err.message })),
-        ),
+        onHotkeyError(noteHotkeyError),
       ]),
-    [beginTyping, refreshTyping],
+    [beginTyping, noteHotkeyError, refreshTyping],
   );
 
-  const clearHotkeyError = useCallback(
-    (which: "start" | "stop") =>
-      setHotkeyErrors((prev) => ({ ...prev, [which]: null })),
-    [],
-  );
+  // Recapturing settles the slot: the backfill must not put a startup failure
+  // back after the user has replaced the accelerator that caused it.
+  const clearHotkeyError = useCallback((which: Which) => {
+    hotkeySettled.current[which] = true;
+    setHotkeyErrors((prev) => ({ ...prev, [which]: null }));
+  }, []);
 
   function onTabKeyDown(event: React.KeyboardEvent, index: number) {
     let next = -1;
@@ -325,7 +383,6 @@ export default function App() {
             onTextChange={setText}
             typingDelayMs={settings.settings.typingDelayMs}
             startDelaySecs={settings.settings.startDelaySecs}
-            newlineMode={settings.settings.newlineMode}
             onDelayChange={(typingDelayMs) => settings.update({ typingDelayMs })}
             state={typing.state}
             result={typing.result}

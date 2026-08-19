@@ -49,10 +49,22 @@ export function releaseCapture(onError: (message: string) => void): void {
 }
 
 /**
- * `save_settings` expires any outstanding suspend on the backend. A debounced
- * save landing while a capture field is still focused would therefore re-arm
- * the exact hotkey the user is in the middle of replacing — the original bug,
- * reintroduced a few hundred milliseconds later. Re-assert after every save.
+ * Re-states the suspend after a settings save.
+ *
+ * A save does *not* expire the suspend: `hotkeys::apply` has to lift it, since
+ * actually registering an accelerator is the only way to learn whether the OS
+ * will accept it, but it snapshots the flag on the way in and restores it on
+ * both exit paths. So the capture survives a save today — because the backend
+ * puts the suspend back, and because `suspend_hotkeys` is a boolean flip rather
+ * than a counted release, which is what makes re-asserting an intact suspend a
+ * no-op instead of a second lease.
+ *
+ * Both of those are the backend's choices, and the frontend holds the suspend
+ * for as long as a capture field is focused — a window a debounced save lands
+ * inside of by design. Re-asserting costs one idempotent IPC call and keeps
+ * that claim resting on something this side does, so if the restore is ever
+ * dropped the field is still protected rather than silently re-arming the exact
+ * hotkey the user is in the middle of replacing.
  *
  * Safe to call unconditionally; it's a no-op when nothing is capturing.
  */

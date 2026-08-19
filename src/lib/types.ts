@@ -97,6 +97,26 @@ export type HotkeyError = {
 };
 
 /**
+ * Result of `hotkey_status()` — the pollable form of `hotkey://error`.
+ *
+ * Needed because the startup registration happens in the backend's `setup`
+ * hook, so its `hotkey://error` is emitted before any listener exists to hear
+ * it. Without a poll, a shortcut another application already owns is rendered
+ * in Settings as though it were bound and simply does nothing when pressed.
+ *
+ * At most one entry per slot, cleared once that slot rebinds successfully — the
+ * backend collapses to the latest, so this never accumulates and a poll cannot
+ * hand back an error the user has already fixed.
+ *
+ * `failures` also carries release failures, where a shortcut Ketikin no longer
+ * wants may still be grabbed until it restarts. Nothing distinguishes them in
+ * the shape: the `message` says so, and it is rendered verbatim. Note that on
+ * one of those the `accelerator` is the *old* value, not the one now shown in
+ * the field it renders under — which is why only `message` is displayed.
+ */
+export type HotkeyStatus = { failures: HotkeyError[] };
+
+/**
  * Payload of `tray://unavailable` — the tray icon could not be constructed, so
  * the backend ignores `minimizeToTray` / `closeToTray` for this run. The stored
  * preference is left alone, so it returns on a system with a working tray.

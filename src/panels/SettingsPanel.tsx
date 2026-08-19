@@ -68,10 +68,23 @@ export function SettingsPanel({
    * the debounce, and the rejected value stays in the pending settings, so
    * every subsequent save fails too and the user is stuck behind a recurring
    * error banner. Catching it here keeps the bad value from being committed.
+   *
+   * Compared case-insensitively because that is the rule being pre-empted:
+   * `Settings::validate` uses `eq_ignore_ascii_case`, so a hand-edited
+   * `"alt+k"` versus a captured `"Alt+K"` is a duplicate to the backend. An
+   * exact-match check here would wave through precisely the values that go on
+   * to fail every save.
    */
   function commitHotkey(which: Which, accelerator: string): boolean {
     const other = which === "start" ? settings.stopHotkey : settings.startHotkey;
-    if (accelerator === other) {
+    // Deliberately stricter than the backend, not drift: `Settings::validate`
+    // gates this rule on `hotkeys_enabled` so that disabled hotkeys can't block
+    // an unrelated save, whereas this check is unconditional. The two do
+    // different jobs — this one stops the duplicate ever being committed, the
+    // backend's blocks only the transition where it starts to matter. Left
+    // ungated because a duplicate saved while hotkeys are off surfaces later,
+    // detached from the action that caused it, when they're switched on.
+    if (accelerator.toLowerCase() === other.toLowerCase()) {
       setValidationErrors((prev) => ({
         ...prev,
         [which]: "Start and stop must use different shortcuts.",

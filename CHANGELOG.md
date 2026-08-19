@@ -36,10 +36,13 @@ accept clipboard paste.
 - **Resilient storage** with a fallback chain: the OS application-data directory, then `%APPDATA%`
   and `%LOCALAPPDATA%` on Windows, then a `data` folder next to the executable, then the system
   temp directory. Writes are atomic, so an interrupted save leaves the previous file intact. If no
-  location is writable the app continues with in-memory data and shows a warning banner. Because
-  the first Windows candidate already sits inside `%APPDATA%`, the recovery that matters on
-  Windows Server, RDP, and roaming-profile setups comes from `%LOCALAPPDATA%`, the folder beside
-  the executable, and temp — the cases where the roaming profile is unavailable or read-only.
+  location is writable the app continues with in-memory data and shows a warning banner. On
+  Windows the candidates are less independent than the list suggests — the first already sits
+  inside `%APPDATA%`, temp sits inside `%LOCALAPPDATA%`, and the folder beside the executable is
+  only writable for portable and per-user installs — so the recovery that matters on Windows
+  Server, RDP, and roaming-profile setups is `%LOCALAPPDATA%`, which survives a roaming profile
+  that is unavailable or read-only. Where even that is denied, Ketikin runs in memory and says so
+  instead of silently discarding saves.
 - **Builds for Windows x64** (NSIS `.exe` supporting per-machine and per-user installs, plus
   `.msi`), **Linux x64** (`.AppImage`, `.deb`, and `.rpm`), and **macOS** on both Intel x64 and
   Apple Silicon arm64 (`.dmg`).
