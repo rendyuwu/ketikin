@@ -124,13 +124,21 @@ which is why it reports when file logging is unavailable.
 
 The UI is three panels:
 
-- **Type** — the compose area, the cadence control, countdown display, progress readout, and
-  Start / Stop. Subscribes to the typing engine's progress events. The cadence slider and the
-  numeric delay field are two views of the same setting: both write through `settings.update`, and
-  the slider's discrete stops mean a whole drag lands inside one 400 ms debounce window.
+- **Type** — the compose area, the cadence control, the countdown takeover, and Start / Stop.
+  Subscribes to the typing engine's progress events. The cadence slider and the numeric delay field
+  are two views of the same setting: both write through `settings.update`, and the slider's discrete
+  stops mean a whole drag lands inside one 400 ms debounce window.
 - **Templates** — list, create, edit, and delete templates; clicking one loads it into the Type
   panel's text box.
 - **Settings** — every setting from the settings module, plus the read-only data location.
+
+The run's progress indicator is deliberately **not** in the Type panel: it is a 3px rail fixed to
+the window's top edge, rendered by `App` because that is the only component outside the panel's
+content box. Ketikin is behind another window for the whole time it is typing — the user starts a
+run and clicks into a KVM console — so an indicator inside the content area is one that never gets
+read. It is positioned rather than laid out so that appearing and disappearing with a run cannot
+shift the interface, and only its width animates, because `typing://state` arrives at ~20 events a
+second.
 
 The Rust core is the authority for persisted state, but the Settings panel does not wait on it.
 `useSettings` keeps optimistic local state: an edit updates the UI immediately and schedules a save

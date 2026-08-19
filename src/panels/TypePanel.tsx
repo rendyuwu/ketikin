@@ -73,17 +73,16 @@ export function TypePanel({
 
   const idle = state.phase === "idle";
   const canStart = text.trim().length > 0 && !starting;
-  // The backend's own count, so this agrees with the `state.total` the progress
-  // bar is measured against rather than sitting a few characters away from it.
+  // The backend's own count, so this agrees with the `state.total` the edge rail
+  // is measured against rather than sitting a few characters away from it.
   const characters = typedCharCount(text);
   const runMs = estimateMs(text, typingDelayMs, startDelaySecs);
   const cadence = cadenceName(typingDelayMs);
-  const percent =
-    state.total > 0 ? Math.min(100, (state.typed / state.total) * 100) : 0;
+  const counting = state.phase === "countdown";
 
   return (
     <div className="panel type-panel">
-      <div className="compose">
+      <div className={counting ? "compose compose--taken" : "compose"}>
         <textarea
           ref={textarea}
           className="compose-input"
@@ -96,6 +95,32 @@ export function TypePanel({
           placeholder="Paste what Ketikin should type."
           onChange={(e) => onTextChange(e.target.value)}
         />
+
+        {counting ? (
+          <div className="takeover">
+            <div className="takeover-band">
+              {/* Remounted on each tick by the key, which is what replays the
+                  slide. aria-hidden because the header's live region already
+                  speaks the count, and two regions counting down over each
+                  other is worse than one. */}
+              <span
+                key={state.countdown}
+                className="takeover-digit"
+                aria-hidden="true"
+              >
+                {state.countdown}
+              </span>
+
+              {/* The footnote that used to stand permanently under the button.
+                  It is only actionable while the countdown is running, which is
+                  now the only time it is on screen — and role="status"
+                  announces it once, at the moment that becomes true. */}
+              <p className="takeover-note" role="status">
+                Click into the target window.
+              </p>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="type-footer">
@@ -186,25 +211,6 @@ export function TypePanel({
             ))}
           </p>
         </div>
-
-        {state.phase === "countdown" ? (
-          <p className="countdown" role="status">
-            Starting in {state.countdown}… Click into the target window.
-          </p>
-        ) : null}
-
-        {state.phase === "typing" ? (
-          <div
-            className="progress"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={state.total}
-            aria-valuenow={state.typed}
-            aria-label="Typing progress"
-          >
-            <div className="progress-fill" style={{ width: `${percent}%` }} />
-          </div>
-        ) : null}
 
         {idle ? (
           <button

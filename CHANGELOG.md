@@ -41,6 +41,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **You can now see a run's progress with Ketikin's window almost entirely covered.** Progress used
+  to be a 4px bar inside the panel and one line of small centred text, both of which disappeared the
+  moment you clicked into the window you were typing into — which is every time, since that is what
+  the app is for. It is now a brass rail along the very top edge of the window, so a sliver of
+  Ketikin showing behind a KVM console or an iDRAC screen is enough to tell you how far along it is.
+  The countdown has become a change of mode rather than a line of text: the text you are about to
+  send dims, the number takes the centre of the window at four times its old size, and **Click into
+  the target window.** sits under it. The header's counter uses fixed-width digits, so it no longer
+  jitters as it climbs. **Stop** is still red, and now shows its shortcut too.
+  ([#9](https://github.com/rendyuwu/ketikin/issues/9))
 - **The Type panel now asks how careful you want to be, not how many milliseconds.** The bottom half
   of the panel was four stacked rows doing one job — a meta line, a delay field, the button, and a
   standing footnote — and the delay was stated twice in two of them. It is now one block. **Delay
