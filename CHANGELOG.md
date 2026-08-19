@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **You can now see where every control ends.** The edge of every input, button, hotkey field,
+  select, slider and switch was drawn in a grey that measured 1.87:1 against the surface behind it on
+  light and 1.81:1 on dark, well under the 3:1 that WCAG 2.2 asks of the boundary of a user interface
+  component. The switches were the worst of it: they carry no border, so the whole off-state track
+  *was* that colour — a 30×18 shape with nothing else to say it was there. Rather than darken the one
+  token and turn every divider in the app into a box with it, control boundaries now have their own
+  token: `--control-edge`, at 3.42:1 on light and 3.41:1 on dark, measured against the sunken surface
+  too because a button inside the template form or the storage panel sits on that one. The hairline
+  under a section label and the line between two template rows are untouched, and the notice banner,
+  the storage panel and the dialog keep the old stroke — they are surfaces, not controls. The
+  template body field is included even though it was on the hairline: its sunken fill is 1.06:1
+  against the surface around it, so that 1.30:1 stroke was the only thing marking out a field the
+  user is asked to type into. ([#15](https://github.com/rendyuwu/ketikin/issues/15))
 - **The app and tray icon are legible at the size they are actually seen at.** At 16 pixels — the
   titlebar and the system tray, which is where this icon spends nearly all of its life — the old one
   rendered as a blue smudge. It was four nested shapes with three concentric outlines, and at that

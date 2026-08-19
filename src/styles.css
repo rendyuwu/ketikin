@@ -55,6 +55,31 @@
   --border: #dddcd7;
   --border-strong: #bcbbb5;
 
+  /* The edge of a control, and nothing else. Not a third weight in the border
+     ramp — a role, which is why it is named for one.
+
+     WCAG 2.2 SC 1.4.11 asks 3:1 of the visual information that identifies a user
+     interface component, and --border-strong never cleared it: 1.87:1 on light,
+     1.81:1 on dark. That is the token that used to draw every input, button,
+     hotkey field, select and toggle track, so the boundary of every control in
+     the app was invisible to anyone the criterion exists for. The switches were
+     the worst of it — they carry no border, so the off-state track *is* this
+     colour, a 30x18 shape whose entire presence depended on a failing value.
+
+     Splitting it rather than darkening it is the whole point. --border-strong
+     also draws surface edges (the notice banner, the storage panel, the dialog),
+     and --border draws hairlines — the rule under a section label, the line
+     between two template rows. Pushing one value to 3:1 would have dragged those
+     with it and turned a UI of quiet dividers into a UI of boxes, which is the
+     opposite of the direction this interface is going. A control's boundary and a
+     divider have different jobs; they now have different tokens.
+
+     Measured against both surfaces a control ever sits on, because a button
+     inside the template form or the storage panel sits on --bg-sunken, not --bg,
+     and that is the tighter of the two. Anything lighter than this fails there:
+     #8f8e87 measures 3.20:1 on --bg but only 2.96:1 on --bg-sunken. */
+  --control-edge: #8a8983; /* 3.42:1 on --bg, 3.16:1 on --bg-sunken */
+
   --text: #191917;
   --text-muted: #5e5e58;
   /* Pinned to the WCAG AA floor, not picked by eye. This token carries every
@@ -158,6 +183,7 @@
     --bg-active: #2c3035;
     --border: #2a2d31;
     --border-strong: #3d4147;
+    --control-edge: #656a71; /* 3.41:1 on --bg, 3.13:1 on --bg-sunken */
 
     --text: #e8e8e5;
     --text-muted: #a3a39c;
@@ -188,6 +214,7 @@
   --bg-active: #2c3035;
   --border: #2a2d31;
   --border-strong: #3d4147;
+  --control-edge: #656a71; /* 3.41:1 on --bg, 3.13:1 on --bg-sunken */
 
   --text: #e8e8e5;
   --text-muted: #a3a39c;
@@ -245,7 +272,7 @@ body {
   /* Both scrollbar properties inherit, so declaring them once here covers every
      scroll container in the app — including ones added later. */
   scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-color: var(--control-edge) transparent;
 }
 
 /* The OS scrollbar is wide, high-contrast and permanently visible on all three
@@ -263,7 +290,7 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
+  background: var(--control-edge);
   border-radius: 4px;
 }
 
@@ -451,7 +478,7 @@ body {
   font-weight: 500;
   color: var(--text);
   background: var(--bg);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--control-edge);
   border-radius: var(--r-control);
   cursor: pointer;
   transition:
@@ -610,7 +637,7 @@ body {
   font-size: 13px;
   color: var(--text);
   background: var(--bg);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--control-edge);
   border-radius: var(--r-control);
 }
 
@@ -696,6 +723,13 @@ body {
   pointer-events: none;
 }
 
+/* On --control-edge rather than the hairline it used to use, even though the
+   issue that split the token named the bordered controls and not this one. The
+   sunken fill is 1.06:1 against the surface around it, so the stroke was the only
+   thing saying where this field started, at 1.30:1 — the same failure, in a field
+   the user is asked to type into. The compose surface is the one text input that
+   stays borderless: it is the panel rather than a control inside one, and boxing
+   it in was tried and rejected. */
 .textarea {
   width: 100%;
   padding: 8px 12px;
@@ -704,7 +738,7 @@ body {
   line-height: 1.5;
   color: var(--text);
   background: var(--bg-sunken);
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-edge);
   border-radius: var(--r-control);
   resize: none;
 }
@@ -764,13 +798,15 @@ body {
    from --r-*. Smaller than the 34x20 it replaced, and with no border: at phone
    proportions it sat beside square-cornered buttons and native selects as a
    third design language. The off state is the graphite track alone, so the
-   shape reads without a stroke around it. */
+   shape reads without a stroke around it — which is exactly why the track has to
+   carry --control-edge and not a hairline weight: with no border, this fill is
+   the entire control. */
 .toggle-track {
   position: relative;
   flex: none;
   width: 30px;
   height: 18px;
-  background: var(--border-strong);
+  background: var(--control-edge);
   border-radius: 9px;
   transition: background-color var(--dur) ease;
 }
@@ -924,6 +960,11 @@ body {
    accented and competed with the primary action for the one colour that means
    "live". Urgency is carried by the copy and by which action the banner offers,
    which is the more disciplined answer anyway. */
+/* Still --border-strong, not --control-edge: a banner is a surface, so this
+   stroke is emphasis against the plain hairline next to it rather than the
+   boundary of something operable, and SC 1.4.11's 3:1 does not apply to it. Same
+   reasoning holds for `.storage--notice` and `.dialog`, which are the only other
+   two places the token survives. */
 .banner--notice {
   background: var(--bg-sunken);
   border-color: var(--border-strong);
@@ -1117,7 +1158,7 @@ body {
 
 .cadence-slider::-webkit-slider-runnable-track {
   height: 2px;
-  background: var(--border-strong);
+  background: var(--control-edge);
   border-radius: 1px;
 }
 
@@ -1135,7 +1176,7 @@ body {
 
 .cadence-slider::-moz-range-track {
   height: 2px;
-  background: var(--border-strong);
+  background: var(--control-edge);
   border-radius: 1px;
 }
 
@@ -1470,7 +1511,7 @@ body {
   text-align: left;
   color: var(--text);
   background: var(--bg);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--control-edge);
   border-radius: var(--r-control);
   cursor: pointer;
 }
