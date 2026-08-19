@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gets a real menu bar template as well — black plus alpha, tinted by the system for a light or dark
   bar — instead of a colour tile sitting among the monochrome icons of every other app.
   ([#11](https://github.com/rendyuwu/ketikin/issues/11))
+- **The titlebar now follows the theme you picked.** Choosing **Light** restyled the app but left
+  the native titlebar dark, so a black bar sat on top of a white window on every tab. The theme
+  setting only ever reached the WebView, and the frame around it is drawn by the OS, which was never
+  told anything. It is now pushed to the window itself — at launch as well as on change, so a stored
+  Light no longer waits for you to touch the control — and **System** hands the frame back to the OS
+  rather than pinning it, so it keeps following along when you switch the desktop theme with Ketikin
+  running. On Linux the frame belongs to the window manager, which may decline.
+  ([#12](https://github.com/rendyuwu/ketikin/issues/12))
 - **Pinning the theme to Dark no longer keeps the washed-out grey.** The contrast fix for the
   faintest text landed in the palette used when Theme is set to **System**, but not in the one used
   when it is pinned to **Dark**, so anyone who chose Dark explicitly still saw field hints,
