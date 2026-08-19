@@ -542,13 +542,17 @@ body {
   background: var(--bg-hover);
 }
 
-.btn--danger-text {
-  color: var(--danger);
-}
-
-.btn--danger-text:hover:not(:disabled) {
-  color: var(--danger);
-  background: var(--danger-soft);
+/* An icon and a label on one line. Deliberately a modifier rather than a change
+   to `.btn` itself: switching every button in the app from inline-block to
+   inline-flex would shift the baseline of the text-only ones for nothing. The
+   gap is a literal for the reason stated in the tokens block — it is spacing
+   *inside* a control, which is sized to the control rather than to the page's
+   rhythm. */
+.btn--icon,
+.link--icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .icon-button {
@@ -572,6 +576,15 @@ body {
 .icon-button:hover {
   color: var(--text);
   background: var(--overlay-hover);
+}
+
+/* Neutral at rest and red only under the pointer. Delete already asks for
+   confirmation, so a permanently red control over-warns an action that cannot
+   fire by accident — and a list of rows each carrying a red button reads as a
+   page full of hazards. */
+.icon-button--danger:hover {
+  color: var(--danger);
+  background: var(--danger-soft);
 }
 
 /* Muted rather than brass: the update banner already spends the accent on its
@@ -1242,8 +1255,16 @@ body {
 .templates-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--s-tight);
+}
+
+/* The eyebrow's own `::after` rule is what pushes the New button to the right,
+   which is why there is no `justify-content` here: it gives the head a left
+   anchor and its separator in one element, the same way a Settings section
+   label does. Without the grow the title would size to its text and the rule
+   would be a stub. */
+.templates-head .section-title {
+  flex: 1 1 auto;
 }
 
 .templates-scroll {
@@ -1264,14 +1285,49 @@ body {
 
 .template {
   display: flex;
-  flex-direction: column;
-  gap: var(--s-hair);
-  padding: var(--s-tight) 0;
+  align-items: center;
+  gap: var(--s-tight);
   border-bottom: 1px solid var(--border);
 }
 
 .template:last-child {
   border-bottom: 0;
+}
+
+/* The fill is on the row rather than on the button inside it, so hovering
+   anywhere — including the two actions — highlights the same thing the eye
+   already treats as one item. */
+.template:hover {
+  background: var(--bg-hover);
+}
+
+/* The primary target: everything except the two action buttons. `flex: 1 1 auto`
+   is what leaves no dead strip between the preview and the actions. */
+.template-use {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--s-hair);
+  /* Without this the preview would push the row wider instead of ellipsising:
+     a flex item's min-width is `auto`, which means "as wide as my content". */
+  min-width: 0;
+  padding: var(--s-tight) 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+/* The global ring is offset outwards by 2px, which is load-bearing on filled
+   controls (see the note at `:focus-visible`). Here the row spans the full width
+   of `.templates-scroll`, and that container's `overflow-y: auto` computes
+   `overflow-x` to `auto` as well — so an outward ring would either clip or open
+   a horizontal scrollbar. Inset, on a row with no fill of its own, it reads as
+   the row highlight it is. */
+.template-use:focus-visible {
+  outline-offset: -2px;
 }
 
 .template-name {
@@ -1291,10 +1347,31 @@ body {
   text-overflow: ellipsis;
 }
 
+/* Revealed on hover *and* on focus, and hidden with `opacity` alone.
+   `visibility: hidden`, `display: none` and rendering them conditionally all
+   take the two buttons out of the tab order, which would be a regression from
+   the always-visible buttons this replaced — Edit and Delete would become
+   mouse-only. `:focus-within` is what draws them once Tab arrives. The
+   reduced-motion block only collapses durations, so the reveal becomes instant
+   there rather than disappearing. */
 .template-actions {
   display: flex;
-  justify-content: flex-end;
+  flex: none;
   gap: var(--s-hair);
+  opacity: 0;
+  transition: opacity var(--dur) ease;
+}
+
+.template:hover .template-actions,
+.template:focus-within .template-actions {
+  opacity: 1;
+}
+
+/* Nothing reveals them where there is no pointer to hover with. */
+@media (hover: none) {
+  .template-actions {
+    opacity: 1;
+  }
 }
 
 .template-form {

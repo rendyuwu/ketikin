@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 
 import { Banner } from "../components/Banner";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { PencilIcon, PlusIcon, TrashIcon } from "../components/Icons";
 import type { UseTemplates } from "../hooks/useTemplates";
-import { formatCount } from "../lib/format";
 import type { Template } from "../lib/types";
 
 type TemplatesPanelProps = {
@@ -103,13 +103,14 @@ export function TemplatesPanel({ templates, onUse }: TemplatesPanelProps) {
   return (
     <div className="panel templates-panel">
       <div className="templates-head">
-        <span className="meta">
-          {loading
-            ? "Loading…"
-            : `${formatCount(items.length)} template${items.length === 1 ? "" : "s"}`}
-        </span>
-        <button type="button" className="btn btn--small" onClick={openNew}>
-          New template
+        <h2 className="section-title">Templates</h2>
+        <button
+          type="button"
+          className="btn btn--small btn--icon"
+          onClick={openNew}
+        >
+          <PlusIcon size={12} />
+          New
         </button>
       </div>
 
@@ -120,6 +121,8 @@ export function TemplatesPanel({ templates, onUse }: TemplatesPanelProps) {
       ) : null}
 
       <div className="templates-scroll">
+        {loading ? <p className="meta">Loading…</p> : null}
+
         {draft ? (
           <form className="template-form" onSubmit={submit}>
             <h2 className="section-title">
@@ -170,10 +173,15 @@ export function TemplatesPanel({ templates, onUse }: TemplatesPanelProps) {
         {!loading && items.length === 0 && !draft ? (
           <div className="empty">
             <p>
-              Templates keep text you send often — a login banner, a bootstrap
-              script — one click away from the Type panel.
+              Save text you paste often. Templates load straight into the Type
+              tab.
             </p>
-            <button type="button" className="btn btn--primary" onClick={openNew}>
+            <button
+              type="button"
+              className="btn btn--primary btn--icon"
+              onClick={openNew}
+            >
+              <PlusIcon />
               New template
             </button>
           </div>
@@ -183,29 +191,45 @@ export function TemplatesPanel({ templates, onUse }: TemplatesPanelProps) {
           <ul className="templates-list">
             {items.map((template) => (
               <li className="template" key={template.id}>
-                <div className="template-name">{template.name}</div>
-                <div className="template-preview">{preview(template.content)}</div>
+                {/*
+                  A real button filling the row rather than a handler on the
+                  <li>: Enter and Space, the disabled state and the focus ring
+                  all come for free, and none of them do on a div. It is also
+                  why the row cannot simply *wrap* the two actions — a button
+                  inside a button is invalid and browsers unnest it.
+
+                  The label is the verb, not the row's text: "Use “Bootstrap”"
+                  says what pressing it does, where the name and the preview run
+                  together into a sentence that starts with a fragment of shell
+                  script.
+                */}
+                <button
+                  type="button"
+                  className="template-use"
+                  aria-label={`Use “${template.name}”`}
+                  onClick={() => onUse(template.content)}
+                >
+                  <span className="template-name">{template.name}</span>
+                  <span className="template-preview">
+                    {preview(template.content)}
+                  </span>
+                </button>
                 <div className="template-actions">
                   <button
                     type="button"
-                    className="btn btn--small"
-                    onClick={() => onUse(template.content)}
-                  >
-                    Use
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn--quiet btn--small"
+                    className="icon-button"
+                    aria-label={`Edit “${template.name}”`}
                     onClick={() => openEdit(template)}
                   >
-                    Edit
+                    <PencilIcon />
                   </button>
                   <button
                     type="button"
-                    className="btn btn--quiet btn--small btn--danger-text"
+                    className="icon-button icon-button--danger"
+                    aria-label={`Delete “${template.name}”`}
                     onClick={() => setConfirming(template)}
                   >
-                    Delete
+                    <TrashIcon />
                   </button>
                 </div>
               </li>

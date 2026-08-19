@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { Field } from "../components/Field";
 import { HotkeyInput } from "../components/HotkeyInput";
+import { ExternalIcon } from "../components/Icons";
 import { NumberInput } from "../components/NumberInput";
 import { Select } from "../components/Select";
 import { Toggle } from "../components/Toggle";
@@ -286,10 +287,11 @@ export function SettingsPanel({
             {updateInfo ? (
               <button
                 type="button"
-                className="link"
+                className="link link--icon"
                 onClick={() => updater.openNotes(updateInfo.version)}
               >
                 Release notes
+                <ExternalIcon size={12} />
               </button>
             ) : null}
           </div>
@@ -339,11 +341,12 @@ export function SettingsPanel({
                     the reason is already spelled out in the line above. */}
                 <button
                   type="button"
-                  className="btn btn--small"
+                  className="btn btn--small btn--icon"
                   disabled={storage.source === "memory"}
                   onClick={openFolder}
                 >
                   Open data folder
+                  <ExternalIcon size={12} />
                 </button>
               </div>
               {/* The log lives one level down, in logs/. Without this, someone

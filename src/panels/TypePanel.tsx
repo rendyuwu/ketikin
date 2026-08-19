@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import { CloseIcon } from "../components/Banner";
+import { CloseIcon } from "../components/Icons";
 import { NumberInput } from "../components/NumberInput";
 import {
   CADENCE_LABELS,
@@ -250,7 +250,7 @@ export function TypePanel({
             aria-label="Dismiss result"
             onClick={onDismissResult}
           >
-            <CloseIcon />
+            <CloseIcon size={12} />
           </button>
         </div>
       ) : null}
