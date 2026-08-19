@@ -13,6 +13,8 @@
 //!   whatever the user types next in a remote console.
 //! - `typing://state` is coalesced to at most ~20 events/second, so a 1 ms
 //!   delay does not flood the IPC bridge with a million messages.
+//! - The tray's run mark is set and cleared by the same [`RunGuard`], so it
+//!   cannot be left showing a run that has ended — including after a panic.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
@@ -252,10 +254,7 @@ pub fn start(app: &AppHandle, text: &str, settings: Settings) -> Result<(), AppE
                 return;
             }
 
-            let mut guard = RunGuard {
-                app: worker_app.clone(),
-                outcome: None,
-            };
+            let mut guard = RunGuard::new(worker_app.clone());
             guard.outcome = Some(run(
                 &worker_app,
                 &mut enigo,
@@ -312,11 +311,25 @@ fn release(app: &AppHandle) {
     }
 }
 
-/// Guarantees the engine returns to idle and emits exactly one `typing://done`,
-/// even if the worker panics partway through a run.
+/// Guarantees the engine returns to idle, emits exactly one `typing://done`, and
+/// leaves the tray unmarked, even if the worker panics partway through a run.
 struct RunGuard {
     app: AppHandle,
     outcome: Option<Done>,
+}
+
+impl RunGuard {
+    /// Marks the tray as running as the guard is created.
+    ///
+    /// Here rather than anywhere inside [`run`] so the mark cannot outlive the
+    /// `drop` that clears it: there is no path that sets it without a guard
+    /// already standing. It lands before the first `typing://state`, so the tray
+    /// is marked for the countdown as well, which is the part of a run the user is
+    /// most likely to be watching something else during.
+    fn new(app: AppHandle) -> Self {
+        crate::tray::set_running(&app, true);
+        Self { app, outcome: None }
+    }
 }
 
 impl Drop for RunGuard {
@@ -329,6 +342,11 @@ impl Drop for RunGuard {
         release(&self.app);
         let _ = self.app.emit(EVENT_STATE, TypingState::idle());
         let _ = self.app.emit(EVENT_DONE, done);
+        // Last, and deliberately: `set_running` blocks until the main thread runs
+        // it, and nothing above it should wait on that. Releasing the engine is
+        // what lets the next run start, and the frontend needs its terminal event;
+        // an unmarked tray is only cosmetic and can arrive a beat later.
+        crate::tray::set_running(&self.app, false);
     }
 }
 
