@@ -493,11 +493,14 @@ fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
         // before it disappears; on some Linux WMs `is_minimized` is unreliable
         // and the window may simply stay in the taskbar. The tray menu's Hide
         // item is the portable path.
-        WindowEvent::Resized(_) => {
-            if minimize_to_tray(app) && window.is_minimized().unwrap_or(false) {
-                if let Err(err) = window.hide() {
-                    log::warn!("window: could not hide on minimize: {err}");
-                }
+        // The guard is a guard rather than an `if` inside the arm so that clippy's
+        // collapsible_match does not fire; a false guard falls through to the
+        // catch-all arm, which is the same no-op as before.
+        WindowEvent::Resized(_)
+            if minimize_to_tray(app) && window.is_minimized().unwrap_or(false) =>
+        {
+            if let Err(err) = window.hide() {
+                log::warn!("window: could not hide on minimize: {err}");
             }
         }
         _ => {}
