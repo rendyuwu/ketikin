@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Banner } from "./components/Banner";
+import { ExternalIcon } from "./components/Icons";
 import { useSettings } from "./hooks/useSettings";
 import { useTemplates } from "./hooks/useTemplates";
 import { useTyping } from "./hooks/useTyping";
@@ -387,10 +388,11 @@ export default function App() {
                     </button>
                     <button
                       type="button"
-                      className="link"
+                      className="link link--icon"
                       onClick={() => updater.openNotes(updateInfo.version)}
                     >
                       Release notes
+                      <ExternalIcon size={12} />
                     </button>
                   </>
                 ) : (

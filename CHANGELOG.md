@@ -41,6 +41,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A template is now used by clicking its row.** Every item in the Templates list carried a `Use`, an
+  `Edit` and a `Delete` button on a line of their own — three controls for an item two lines tall —
+  and the row itself did nothing when clicked, even though using the template is the intent almost
+  every time. Clicking a row, or pressing Enter on it, now loads that template into the Type tab.
+  **Edit** and **Delete** have become small icon buttons that appear when the row is hovered *or*
+  when the keyboard reaches them, so they are still usable with no mouse at all. Delete stays grey
+  until you point at it: it already asks for confirmation, and a list where every row carries a red
+  button reads as a page full of hazards. The `1 template` counter is gone — the list is the count —
+  and the head now says **Templates**. The empty state says what templates are for in one line and
+  offers the one action. The three buttons that leave the app for somewhere else — **Release notes**
+  in both places it appears, and **Open data folder** — now say so with an icon.
+  ([#10](https://github.com/rendyuwu/ketikin/issues/10))
 - **You can now see a run's progress with Ketikin's window almost entirely covered.** Progress used
   to be a 4px bar inside the panel and one line of small centred text, both of which disappeared the
   moment you clicked into the window you were typing into — which is every time, since that is what

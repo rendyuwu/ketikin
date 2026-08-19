@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { ChevronIcon } from "./Icons";
+
 type SelectProps = {
   id?: string;
   value: string;
@@ -30,34 +32,7 @@ export function Select({ id, value, onChange, children, ariaLabel }: SelectProps
       >
         {children}
       </select>
-      <ChevronIcon />
+      <ChevronIcon size={12} />
     </span>
-  );
-}
-
-/**
- * Drawn to the same spec as `CloseIcon`: 16 grid, 1.5px stroke, `currentColor`,
- * hidden from assistive tech. Anything else added to this app's icon set
- * follows these five attributes.
- */
-export function ChevronIcon() {
-  return (
-    <svg
-      className="select-chevron"
-      viewBox="0 0 16 16"
-      width="12"
-      height="12"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path
-        d="M4 6.5l4 4 4-4"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        fill="none"
-      />
-    </svg>
   );
 }
