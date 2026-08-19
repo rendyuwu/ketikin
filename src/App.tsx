@@ -17,7 +17,12 @@ import {
   subscribe,
   trayStatus,
 } from "./lib/api";
-import { formatCount, isStorageUnreliable, sameStorage } from "./lib/format";
+import {
+  formatAccelerator,
+  formatCount,
+  isStorageUnreliable,
+  sameStorage,
+} from "./lib/format";
 import type { HotkeyError, StorageInfo, TypingState } from "./lib/types";
 import { SettingsPanel } from "./panels/SettingsPanel";
 import { TemplatesPanel } from "./panels/TemplatesPanel";
@@ -212,6 +217,23 @@ export default function App() {
     tabRefs.current[next]?.focus();
   }
 
+  /**
+   * The shortcut to draw inside a Start / Stop button, or `null` for none.
+   *
+   * Omitted rather than greyed out when hotkeys are switched off or the OS
+   * refused the bind: the alternative is a button that advertises a shortcut
+   * which does nothing, which is the one thing a shortcut hint must never do.
+   * The rule lives here because this is the only place that can see both the
+   * settings and the registration failures.
+   */
+  function accelerator(which: Which, value: string): string | null {
+    if (!settings.settings.hotkeysEnabled || hotkeyErrors[which] !== null) {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed === "" ? null : formatAccelerator(trimmed);
+  }
+
   const storageUnreliable = storage ? isStorageUnreliable(storage) : false;
   const storagePinned = storage?.source === "memory";
   const notices = storage?.notices ?? [];
@@ -388,6 +410,8 @@ export default function App() {
             state={typing.state}
             result={typing.result}
             starting={typing.starting}
+            startAccelerator={accelerator("start", settings.settings.startHotkey)}
+            stopAccelerator={accelerator("stop", settings.settings.stopHotkey)}
             onStart={() => beginTyping(text)}
             onStop={typing.stop}
             onDismissResult={typing.dismissResult}

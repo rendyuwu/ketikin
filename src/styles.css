@@ -76,6 +76,11 @@
      graphite and text, which is what leaves the run state room to carry
      weight. Before adding a fifth use, retire one of the four.
 
+     The compose caret is the one admitted exception, and it is admitted on the
+     rule's own terms rather than around them: see the note on `.compose-input`.
+     It is a 1px mark that exists only while that surface holds focus, which is
+     the one moment the app is receiving keystrokes instead of sending them.
+
      Light mode needs a darker brass for inline text than for fills, which is
      why --accent-text stays a separate token: 3.22:1 is enough for a filled
      control but not for a glyph. --accent-hover is deeper rather than lighter
@@ -107,13 +112,16 @@
      replaced lived inside a 4px range (11, 12, 12.5, 13, 14, 15); the 12 vs
      12.5 pair was invisible on screen but real in the CSS, so it drifted.
        11px / 600 / +0.07em / uppercase   section labels, eyebrows
+       11px / 400 / mono                  shortcut hint inside a button
        13px / 400                         body, controls, hints
        15px / 600                         panel titles, template names
-       22px / 500 / tabular               duration estimate  (reserved — #8)
+       15px / 400 / mono                  the compose surface, and its
+                                          empty-state line in sans
+       22px / 500 / tabular               duration estimate
        34px / 500 / tabular               countdown digit    (reserved — #9)
-     22 and 34 are declared here but unused: both need the Type panel
-     restructured first, and 22px would otherwise land on `.meta`, which
-     Settings and Templates share. Weights: 400, 500, 600. Nothing else. */
+     34 is declared here but unused: it needs the countdown takeover, and it
+     would otherwise be a size with no home. Weights: 400, 500, 600. Nothing
+     else. */
 
   /* Layout rhythm, named by intent rather than by size. The scale this replaced
      used one value (12px) for the panel, for sections, for rows and for control
@@ -448,6 +456,29 @@ body {
   display: block;
   width: 100%;
   padding: 9px 12px;
+}
+
+/* Carries the keyboard shortcut inside the button it fires, which is the row the
+   permanent "Click into the target window during the countdown." footnote used
+   to occupy. */
+.btn--action {
+  position: relative;
+}
+
+/* Positioned rather than laid out with `space-between`, so the label stays
+   optically centred whether or not there is a shortcut to show — hotkeys can be
+   switched off, and a bind can have been refused.
+   --text-muted is not available here: on the brass fill it measures 3.6:1 and
+   would fail AA at this size, and dimming --accent-fg with opacity lands at
+   4.2:1, still under. So the hint reads as secondary through size and family
+   instead, at the button's own 5.5:1 (light) / 8.4:1 (dark). */
+.btn-accel {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  transform: translateY(-50%);
 }
 
 .btn--primary {
@@ -893,36 +924,188 @@ body {
 
 /* ========================================================== type panel == */
 
-.type-panel .textarea {
+/* The text you paste *is* the content of this screen, so it is no longer drawn
+   as a form field: no fill, no border, no radius. Framing it as an input made
+   the whole window read as a dialog, and the sunken fill it used to carry
+   measured almost nothing against --bg in light mode anyway — a border spent
+   for no grouping.
+   One hairline, at the bottom, dividing the canvas from the footer. There is
+   deliberately no matching rule at the top: the header already draws one, one
+   --s-group above, and it is already doing exactly that job. A second line just
+   below it would read as a mistake. Full bleed so it lines up with the header's,
+   with the gutter put back as padding so the text itself stays on the panel's
+   own left edge — and so the textarea's focus ring lands inside the window
+   rather than under `.content`'s `overflow: hidden`. */
+.compose {
+  position: relative;
+  display: flex;
   flex: 1 1 auto;
-  min-height: 72px;
+  flex-direction: column;
+  min-height: 0;
+  margin-inline: calc(-1 * var(--s-edge));
+  padding-inline: var(--s-edge);
+  border-bottom: 1px solid var(--border);
 }
 
-/* The readout describes the box above it and the hint describes the button
-   above it, so both belong to what they follow rather than sitting between two
-   groups. This is the exception `.panel > * + *` cannot express. */
-.type-panel > .meta,
-.type-panel > .helper {
+.compose-input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 72px;
+  /* Bottom only, so a full box does not butt its last line against the rule.
+     There is no horizontal padding: `.compose` owns the gutter. */
+  padding: 0 0 var(--s-tight);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  resize: none;
+  /* The fifth place brass appears, and the reason the rule reads "four" in the
+     token block above: this is the one surface in the app *receiving*
+     keystrokes rather than sending them, and the accent is what marks live. A
+     caret is a 1px rule that exists only while this surface holds focus, so it
+     cannot sit alongside the run state competing for a glance the way a
+     coloured control would. */
+  caret-color: var(--accent);
+}
+
+/* Set on the line the caret sits on, at the compose surface's own size, so the
+   empty state reads as a sentence someone wrote rather than as a label floating
+   in the corner. Sans rather than mono because it is interface voice, not
+   content. --text-muted, not --text-faint: at that moment it is the only copy
+   on the screen. */
+.compose-input::placeholder {
+  font-family: var(--font-ui);
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+/* One block, not the four stacked rows this replaced. The readout describes the
+   canvas above it and the cadence row is what changes the number in it, so
+   those sit at group-internal distance; the action gets a full group of air. */
+.type-footer {
+  display: flex;
+  flex-direction: column;
+}
+
+.type-footer > * + * {
   margin-top: var(--s-tight);
 }
 
-.type-controls {
+.type-footer > .btn {
+  margin-top: var(--s-group);
+}
+
+.type-readout {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  align-items: baseline;
   gap: var(--s-tight);
 }
 
-.inline-field {
-  display: flex;
+.type-count {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The answer to the only question the user actually has — how long will I be
+   waiting? — and therefore the largest thing in the footer. It used to be 12px
+   grey text at the tail of a sentence, below the delay field that restated the
+   same number. `margin-left: auto` rather than `justify-content: space-between`,
+   because Clear sits between the two and belongs beside the count it clears. */
+.type-duration {
+  margin-left: auto;
+  font-size: 22px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Three columns and two rows: label, track, value — then the stop names under
+   the track alone. A grid rather than a wrapping flex row so the value cannot
+   drop onto its own line at 460px, which is the width this has to survive. */
+.cadence {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--s-tight);
+  column-gap: var(--s-tight);
+  row-gap: var(--s-hair);
+}
+
+.cadence-label {
   font-size: 13px;
   color: var(--text-muted);
 }
 
-.type-controls > .btn {
-  margin-left: auto;
+/* `.input-affix` pins itself to the start for the Settings grid; here the field
+   is the row's right edge. */
+.cadence > .input-affix {
+  justify-self: end;
+}
+
+/* Three equal columns rather than `space-between`, so "Normal" is centred on the
+   middle stop instead of on the middle of whatever space the other two leave. */
+.cadence-stops {
+  grid-column: 2;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
+.cadence-stops > :nth-child(2) {
+  text-align: center;
+}
+
+.cadence-stops > :nth-child(3) {
+  text-align: right;
+}
+
+/* Drawn rather than left native, for the reason the select was in #6: the
+   platform's range control arrives with its own metrics and its own accent, and
+   this thumb has to be graphite — a brass one would be a control wearing the
+   colour that means "a run is live". Both vendor families are needed and neither
+   is a fallback for the other: Chromium and WebView2 read the -webkit-
+   pseudo-elements, Firefox reads the -moz- ones. */
+.cadence-slider {
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  appearance: none;
+}
+
+.cadence-slider::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--border-strong);
+  border-radius: 1px;
+}
+
+.cadence-slider::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  /* Half the thumb less half the track, so it rides centred on the line
+     instead of hanging off the top of it. */
+  margin-top: -5px;
+  background: var(--text);
+  border: 0;
+  border-radius: 50%;
+  appearance: none;
+}
+
+.cadence-slider::-moz-range-track {
+  height: 2px;
+  background: var(--border-strong);
+  border-radius: 1px;
+}
+
+.cadence-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--text);
+  border: 0;
+  border-radius: 50%;
 }
 
 /* The radius is half the height — derived from the shape, not from --r-*. */
@@ -939,23 +1122,17 @@ body {
   transition: width 120ms linear;
 }
 
-.countdown,
-.helper {
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
 /* One of the four places brass is allowed: the countdown is the moment the app
    is about to take over the keyboard, and it has to be findable from the corner
-   of the eye while the user is clicking into another window. */
+   of the eye while the user is clicking into another window. It also carries the
+   "Click into the target window." instruction, which used to stand permanently
+   under the button — it is only actionable during the countdown, so this is the
+   only time it is on screen. */
 .countdown {
   font-size: 13px;
+  text-align: center;
   color: var(--accent-text);
-}
-
-.helper {
-  font-size: 13px;
-  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
 }
 
 .result {

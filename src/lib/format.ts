@@ -74,6 +74,34 @@ export function formatDuration(ms: number): string {
     : `about ${hours}h ${restMinutes}m`;
 }
 
+/**
+ * The same estimate as `formatDuration`, compressed to fit the Type panel's
+ * duration readout.
+ *
+ * That readout is the largest thing in the footer and shares its row with a
+ * character count, so "about 1m 20s" is a wrap waiting to happen where
+ * "1m 20s" is not. The prose form is not replaced: it stays as what the screen
+ * reader is handed, because "~ 1m 20s" is a glyph and a fragment rather than a
+ * sentence. Keep the two rounding rules identical — they answer the same
+ * question and disagreeing by a second would be visible in one glance at the
+ * two.
+ */
+export function formatDurationCompact(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 1) return "<1s";
+  if (seconds < 60) return `${seconds}s`;
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    const rest = seconds % 60;
+    return rest === 0 ? `${minutes}m` : `${minutes}m ${rest}s`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  return restMinutes === 0 ? `${hours}h` : `${hours}h ${restMinutes}m`;
+}
+
 const STORAGE_DESCRIPTIONS: Record<StorageSource, string> = {
   appData: "Stored in the standard application data folder.",
   appDataEnv: "Stored in the folder named by the APPDATA environment variable.",
