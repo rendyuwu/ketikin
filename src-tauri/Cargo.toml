@@ -33,5 +33,10 @@ thiserror = "2.0.20"
 tokio = { version = "1.53.1", features = ["time"] }
 uuid = { version = "1.20.0", features = ["v4"] }
 
+# Desktop only, and not merely as an optimisation: the plugin has no mobile
+# implementation and fails to build for those targets.
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-single-instance = "2"
+
 [dev-dependencies]
 tempfile = "3.27.0"

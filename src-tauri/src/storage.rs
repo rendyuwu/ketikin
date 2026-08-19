@@ -817,10 +817,13 @@ fn unused_backup_path(dir: &Path, name: &str) -> PathBuf {
 /// filesystem and is therefore atomic. A crash mid-write leaves the previous
 /// good file untouched.
 ///
-/// The temp name carries the pid and a counter because Ketikin has no
-/// single-instance lock: two running copies saving the same file would
-/// otherwise truncate each other's temp file and rename interleaved bytes into
-/// place as authoritative JSON.
+/// The temp name carries the pid and a counter as defence in depth. Ketikin now
+/// holds a single-instance lock (`tauri-plugin-single-instance`, registered
+/// first in `run()`), so a second copy should never reach this function at all —
+/// but if one ever did, two running copies saving the same file would otherwise
+/// truncate each other's temp file and rename interleaved bytes into place as
+/// authoritative JSON. The counter is load-bearing regardless: one process can
+/// have several saves in flight.
 fn write_atomic(dir: &Path, name: &str, bytes: &[u8]) -> std::io::Result<()> {
     let tmp = dir.join(format!(
         "{name}.json.{}-{}.tmp",

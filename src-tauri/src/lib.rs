@@ -719,7 +719,43 @@ pub fn run() {
     let targets = log_targets(&storage);
     let fatal_dir = storage.dir().map(std::path::Path::to_path_buf);
 
-    let result = tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    // Registered first, which the plugin's documentation requires: it decides
+    // whether this process is the second copy during its own initialisation,
+    // and a plugin set up ahead of it would have run in a process that is about
+    // to exit.
+    //
+    // Without this, launching Ketikin while it sits hidden in the tray starts a
+    // whole second app: two tray icons, two typing engines injecting into the
+    // same focused window, last-writer-wins over the shared `settings.json` and
+    // `templates.json`, and — most visibly — global hotkey registration is
+    // exclusive at the OS level, so the new window reports a `hotkey://error`
+    // while the working shortcuts belong to the copy the user cannot see.
+    //
+    // MANUAL TEST REQUIRED BEFORE RELEASE: no automated check here starts a
+    // second process. Launch Ketikin, hide it to the tray, launch it again from
+    // the shortcut — the existing window must come back and no second tray icon
+    // must appear. Worth doing under both X11 and XWayland on Linux, where the
+    // plugin's lock is a DBus name rather than a kernel object.
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            // Ketikin takes no arguments, so there is nothing to act on; log
+            // them because a stray argv is the kind of thing that only becomes
+            // interesting once someone reports it.
+            log::info!(
+                "single-instance: second launch (argv {argv:?}, cwd {cwd}); showing the window"
+            );
+
+            // Runs on the main thread. `show_window` touches the window and
+            // nothing behind a mutex, so it cannot deadlock against a worker
+            // that holds one — see [`AppState`].
+            tray::show_window(app);
+        }));
+    }
+
+    let result = builder
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)

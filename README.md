@@ -156,6 +156,10 @@ Both tray settings depend on the system actually providing a tray icon. If it is
 Ketikin ignores them rather than trapping you — see
 [Troubleshooting](#troubleshooting).
 
+Only one copy of Ketikin runs at a time. Launching it again while it is hidden in the tray brings
+that window back rather than starting a second app, so the shortcut works as a way to reach a
+hidden window and the two copies can never fight over your settings and templates.
+
 `settings.json` is rewritten whenever a setting changes. Keys that are missing or unrecognised
 fall back to the defaults above, so a file written by an older version — or one you edited by hand
 — still loads. Values outside the ranges above are clamped on load as well as on save, so a
