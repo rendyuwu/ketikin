@@ -290,7 +290,7 @@ export default function App() {
 
           {showStorage ? (
             <Banner
-              tone="warn"
+              tone="notice"
               onDismiss={storagePinned ? undefined : () => setStorageDismissed(true)}
             >
               {storageUnreliable ? (
@@ -310,7 +310,7 @@ export default function App() {
             </Banner>
           ) : null}
 
-          {trayMessage ? <Banner tone="warn">{trayMessage}</Banner> : null}
+          {trayMessage ? <Banner tone="notice">{trayMessage}</Banner> : null}
 
           {trayError ? (
             <Banner tone="error" onDismiss={() => setTrayError(null)}>
@@ -320,7 +320,7 @@ export default function App() {
 
           {updateInfo ? (
             <Banner
-              tone="info"
+              tone="notice"
               onDismiss={updater.installing ? undefined : updater.dismiss}
               actions={
                 /* Gated here, not in the handler: when Ketikin can't replace

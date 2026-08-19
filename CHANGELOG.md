@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Pinning the theme to Dark no longer keeps the washed-out grey.** The contrast fix for the
+  faintest text landed in the palette used when Theme is set to **System**, but not in the one used
+  when it is pinned to **Dark**, so anyone who chose Dark explicitly still saw field hints,
+  placeholders and the `TYPING` / `WINDOW` / `HOTKEYS` labels at 4.23:1, under the 4.5:1 minimum.
+  Both dark palettes now carry identical values.
+  ([#4](https://github.com/rendyuwu/ketikin/issues/4))
 - **The faintest text in the app is now readable.** Field hints, input placeholders, the
   `TYPING` / `WINDOW` / `HOTKEYS` labels in Settings and the "Press a key combination…" prompt were
   drawn in a grey that missed the WCAG AA contrast minimum in both themes — 3.34:1 on the light
@@ -35,6 +41,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Brass instead of blue, and the app now brings its own typeface.** Three different blues used to
+  ship in one product, and blue is the most default accent in software. The accent is now a warm
+  brass, and it is spent in exactly four places — the **Start typing** button, the active tab's
+  underline, the countdown, and the progress bar — so that when Ketikin is working, the parts that
+  say so are the only coloured things on screen. Everything else is graphite: switches, links and
+  the focus ring no longer borrow the accent, which means an enabled switch is no longer the same
+  colour as the button that starts a run. Both themes put near-black text on brass rather than white,
+  which white cannot do at any brass light enough to still look like brass. Red is untouched, because
+  red is right for **Stop**. The interface is also set in IBM Plex Sans and IBM Plex Mono, bundled
+  with the app (about 88 KB, no network request, no change offline), so Ketikin reads the same on
+  Windows, macOS and Linux instead of borrowing whatever the platform's UI font happens to be.
+  ([#7](https://github.com/rendyuwu/ketikin/issues/7))
+- **Notification banners have two tones instead of three.** The blue "info" and amber "warning" tints
+  are gone, replaced by one neutral **notice** style; error banners stay red. The amber in particular
+  had to go: it was brass's own family, so every warning read as accented and competed with the
+  primary action. What a banner is about is carried by its wording and by the action it offers.
+  ([#7](https://github.com/rendyuwu/ketikin/issues/7))
 - **The controls no longer look a decade older than the app.** The boxed segmented tab strip is gone
   and so is the wordmark that repeated what the titlebar already said: the tabs are plain text with
   an underline under the active one, sharing a single row with the typing status, which gives about

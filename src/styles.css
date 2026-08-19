@@ -1,29 +1,89 @@
+/* =============================================================== fonts == */
+
+/* Bundled, not fetched: Ketikin runs offline, and a system-stack UI looked
+   like three different applications across Windows (Segoe), macOS (SF) and
+   Linux. Plex was drawn as an engineering-instrument family, its Sans and Mono
+   are one superfamily so mixed numeric lines stay optically matched, and the
+   Sans ships true tabular figures — which most of this UI depends on.
+   Latin subsets only, four files, ~88 KB total: Sans at the three weights the
+   type scale defines and Mono at 400, which is every mono surface in the app.
+   Adding a weight means adding a file, so check the scale first.
+   No CSP change is needed: `font-src` is undeclared in tauri.conf.json and so
+   falls back to `default-src 'self'`, and Vite emits these as bundle assets. */
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/ibm-plex-sans-latin-400-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/ibm-plex-sans-latin-500-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./fonts/ibm-plex-sans-latin-600-normal.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/ibm-plex-mono-latin-400-normal.woff2") format("woff2");
+}
+
 /* ============================================================== tokens == */
 
 :root {
   color-scheme: light;
 
-  --bg: #ffffff;
-  --bg-sunken: #f5f5f4;
-  --bg-hover: #eeeeec;
-  --bg-active: #e4e4e1;
+  --bg: #fcfcfb;
+  --bg-sunken: #f4f3f0;
+  --bg-hover: #edebe7;
+  --bg-active: #e3e1dc;
   --border: #dddcd7;
   --border-strong: #bcbbb5;
 
-  --text: #1a1a18;
-  --text-muted: #6a6a64;
+  --text: #191917;
+  --text-muted: #5e5e58;
   /* Pinned to the WCAG AA floor, not picked by eye. This token carries every
      field hint, placeholder, section label and the hotkey capture prompt, all
      rendered well under 18px, where the minimum is 4.5:1 — so lightening it by
      a shade to "calm it down" puts most of the explanatory copy in the app back
      under the line. The values it replaced did exactly that: #8d8d86 measured
      3.34:1 on white and #7c7c75 measured 4.23:1 on the dark --bg. */
-  --text-faint: #6f6f67; /* 5.07:1 on --bg, 4.64:1 on --bg-sunken */
+  --text-faint: #6f6f67; /* 4.93:1 on --bg, 4.57:1 on --bg-sunken */
 
-  --accent: #2f5ed0;
-  --accent-hover: #2a53ba;
-  --accent-fg: #ffffff;
-  --accent-text: #2a53ba;
+  /* Brass, not blue. Three different blues used to ship in one product, and
+     blue is the most default accent in software — this one arrived with a
+     template rather than being chosen. A warm metallic reads as *armed
+     instrument*, which is the one thing this app's accent has to say.
+
+     Rule: brass never decorates. It appears in exactly four places — the
+     primary action, the active tab underline, the countdown and the progress
+     rail. Not on toggles, not on links, not on focus rings. Everything else is
+     graphite and text, which is what leaves the run state room to carry
+     weight. Before adding a fifth use, retire one of the four.
+
+     Light mode needs a darker brass for inline text than for fills, which is
+     why --accent-text stays a separate token: 3.22:1 is enough for a filled
+     control but not for a glyph. --accent-hover is deeper rather than lighter
+     here, because a lighter brass drops the label on it under 4.5:1. */
+  --accent: #be811c; /* 3.22:1 on --bg — clears the 3:1 non-text minimum */
+  --accent-hover: #b37c14; /* 3.52:1 on --bg */
+  --accent-fg: #17140d; /* 5.56:1 on --accent, 5.09:1 on --accent-hover */
+  --accent-text: #96610f; /* 5.10:1 on --bg, for inline text and glyphs */
 
   --danger: #b3261e;
   --danger-hover: #99201a;
@@ -31,20 +91,17 @@
   --danger-soft: #fdf2f1;
   --danger-border: #edcbc8;
 
-  --warn-soft: #fdf7e8;
-  --warn-border: #e6d5a8;
-
-  --info-soft: #f0f3fd;
-  --info-border: #ccd8f4;
-
   --overlay-hover: rgb(0 0 0 / 7%);
   --scrim: rgb(0 0 0 / 35%);
-  --focus: var(--accent);
+  /* Not the accent: a near-white ring drawn on a brass button measures 1.79:1
+     and simply is not there. See the note on `outline-offset` in the base
+     section, which is what makes this value work. */
+  --focus: var(--text);
 
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
+  --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+    Consolas, "Liberation Mono", monospace;
 
   /* Type scale — five steps, and nothing between them. The six sizes this
      replaced lived inside a 4px range (11, 12, 12.5, 13, 14, 15); the 12 vs
@@ -80,38 +137,36 @@
 
 /* `theme: 'system'` resolves here; 'dark'/'light' are pinned by the attribute
    the app writes onto <html>. The palette is repeated because a media query
-   can't share a rule with a plain selector. */
+   can't share a rule with a plain selector.
+   The two dark blocks must stay byte-identical apart from that selector. They
+   had already drifted once: the contrast fix for --text-faint landed in this
+   block only, so anyone who pinned Dark rather than leaving Theme on System
+   kept the failing value. Change one, change the other, in the same edit. */
 @media (prefers-color-scheme: dark) {
   :root[data-theme="system"] {
     color-scheme: dark;
 
-    --bg: #17181a;
-    --bg-sunken: #1e1f22;
-    --bg-hover: #26282b;
-    --bg-active: #303236;
-    --border: #2e3034;
-    --border-strong: #494c52;
+    --bg: #121316;
+    --bg-sunken: #1a1c1f;
+    --bg-hover: #23262a;
+    --bg-active: #2c3035;
+    --border: #2a2d31;
+    --border-strong: #3d4147;
 
-    --text: #e7e7e4;
-    --text-muted: #9b9b94;
-    --text-faint: #8a8a82; /* 5.11:1 on --bg, 4.74:1 on --bg-sunken */
+    --text: #e8e8e5;
+    --text-muted: #a3a39c;
+    --text-faint: #8a8a82; /* 5.34:1 on --bg, 4.91:1 on --bg-sunken */
 
-    --accent: #4670d8;
-    --accent-hover: #567edf;
-    --accent-fg: #ffffff;
-    --accent-text: #8fb0f5;
+    --accent: #e2a33c; /* 8.44:1 on --bg */
+    --accent-hover: #edb255; /* 9.82:1 on --bg */
+    --accent-fg: #17140d; /* 8.35:1 on --accent, 9.72:1 on --accent-hover */
+    --accent-text: #e2a33c; /* dark mode needs no separate inline brass */
 
     --danger: #e2685f;
     --danger-hover: #ea7a71;
     --danger-fg: #1b0f0e;
     --danger-soft: #2a1917;
     --danger-border: #4a2723;
-
-    --warn-soft: #292317;
-    --warn-border: #4b3e20;
-
-    --info-soft: #1a2030;
-    --info-border: #2d3b59;
 
     --overlay-hover: rgb(255 255 255 / 9%);
     --scrim: rgb(0 0 0 / 55%);
@@ -121,33 +176,27 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --bg: #17181a;
-  --bg-sunken: #1e1f22;
-  --bg-hover: #26282b;
-  --bg-active: #303236;
-  --border: #2e3034;
-  --border-strong: #494c52;
+  --bg: #121316;
+  --bg-sunken: #1a1c1f;
+  --bg-hover: #23262a;
+  --bg-active: #2c3035;
+  --border: #2a2d31;
+  --border-strong: #3d4147;
 
-  --text: #e7e7e4;
-  --text-muted: #9b9b94;
-  --text-faint: #8A8A82;
+  --text: #e8e8e5;
+  --text-muted: #a3a39c;
+  --text-faint: #8a8a82; /* 5.34:1 on --bg, 4.91:1 on --bg-sunken */
 
-  --accent: #4670d8;
-  --accent-hover: #567edf;
-  --accent-fg: #ffffff;
-  --accent-text: #8fb0f5;
+  --accent: #e2a33c; /* 8.44:1 on --bg */
+  --accent-hover: #edb255; /* 9.82:1 on --bg */
+  --accent-fg: #17140d; /* 8.35:1 on --accent, 9.72:1 on --accent-hover */
+  --accent-text: #e2a33c; /* dark mode needs no separate inline brass */
 
   --danger: #e2685f;
   --danger-hover: #ea7a71;
   --danger-fg: #1b0f0e;
   --danger-soft: #2a1917;
   --danger-border: #4a2723;
-
-  --warn-soft: #292317;
-  --warn-border: #4b3e20;
-
-  --info-soft: #1a2030;
-  --info-border: #2d3b59;
 
   --overlay-hover: rgb(255 255 255 / 9%);
   --scrim: rgb(0 0 0 / 55%);
@@ -214,6 +263,11 @@ body {
 
 :focus-visible {
   outline: 2px solid var(--focus);
+  /* Load-bearing, not spacing polish. --focus is --text, and a near-white ring
+     drawn directly on the brass Start button would be 1.79:1 — invisible on the
+     one control most likely to be reached by keyboard. Offset by 2px the ring
+     lands on --bg instead, where it is 15.1:1. Removing this does not loosen
+     the layout, it deletes the focus indicator on every filled control. */
   outline-offset: 2px;
 }
 
@@ -463,11 +517,15 @@ body {
   background: var(--overlay-hover);
 }
 
+/* Muted rather than brass: the update banner already spends the accent on its
+   install button, and a brass "Release notes" beside it would be a second
+   accented element competing inside one banner. The underline is what marks it
+   as a link. */
 .link {
   padding: 0;
   font: inherit;
   font-size: 13px;
-  color: var(--accent-text);
+  color: var(--text-muted);
   background: none;
   border: 0;
   text-decoration: underline;
@@ -658,21 +716,28 @@ body {
   transition: transform var(--dur) ease;
 }
 
+/* Graphite, not brass. A switch is a preference, not the live state of a run,
+   so it must not wear the colour that means "armed" — a panel of brass toggles
+   would compete with the Start button for exactly the attention the accent is
+   reserved for. The filled track is 15.1:1 against the background in dark and
+   17.2:1 in light, so the on state is if anything louder than the accent fill
+   it replaced. */
 .toggle-input:checked + .toggle-track {
-  background: var(--accent);
+  background: var(--text);
 }
 
 .toggle-input:checked + .toggle-track .toggle-thumb {
-  background: var(--accent-fg);
+  background: var(--bg);
   transform: translateX(12px);
 }
 
-/* The on state has to be readable without perceiving the accent fill, so it is
-   carried by shape too: the thumb takes a tick. The thumb already travels, but
-   it also flips from near-black to white in the dark theme, so colour was doing
-   most of the signalling. Two rotated borders rather than an icon, because this
-   project ships no icon dependency. The transform is static, so the
-   reduced-motion block — which only zeroes durations — cannot erase it. */
+/* The on state has to be readable without perceiving the fill, so it is carried
+   by shape too: the thumb takes a tick. The thumb already travels, but it also
+   swaps colour with the track, so without this the whole signal would be
+   chromatic. Two rotated borders rather than an icon, because this project
+   ships no icon dependency. Drawn in the track's own colour so it reads as
+   punched out of the thumb. The transform is static, so the reduced-motion
+   block — which only zeroes durations — cannot erase it. */
 .toggle-input:checked + .toggle-track .toggle-thumb::after {
   content: "";
   position: absolute;
@@ -680,8 +745,8 @@ body {
   left: 3px;
   width: 7px;
   height: 4px;
-  border-bottom: 1.5px solid var(--accent);
-  border-left: 1.5px solid var(--accent);
+  border-bottom: 1.5px solid var(--text);
+  border-left: 1.5px solid var(--text);
   transform: rotate(-45deg);
 }
 
@@ -784,14 +849,14 @@ body {
   border-radius: var(--r-control);
 }
 
-.banner--info {
-  background: var(--info-soft);
-  border-color: var(--info-border);
-}
-
-.banner--warn {
-  background: var(--warn-soft);
-  border-color: var(--warn-border);
+/* Two tones, not three. The info tint was blue, and blue is gone; the warn tint
+   was amber, which is brass's own family, so every warning would have read as
+   accented and competed with the primary action for the one colour that means
+   "live". Urgency is carried by the copy and by which action the banner offers,
+   which is the more disciplined answer anyway. */
+.banner--notice {
+  background: var(--bg-sunken);
+  border-color: var(--border-strong);
 }
 
 .banner--error {
@@ -880,9 +945,12 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* One of the four places brass is allowed: the countdown is the moment the app
+   is about to take over the keyboard, and it has to be findable from the corner
+   of the eye while the user is clicking into another window. */
 .countdown {
   font-size: 13px;
-  color: var(--text);
+  color: var(--accent-text);
 }
 
 .helper {
@@ -1108,9 +1176,10 @@ body {
   border-radius: var(--r-surface);
 }
 
-.storage--warn {
-  background: var(--warn-soft);
-  border-color: var(--warn-border);
+/* Same neutral treatment as `.banner--notice`: a stronger border marks "there
+   is something to read here" without spending a hue on it. */
+.storage--notice {
+  border-color: var(--border-strong);
 }
 
 .storage-path {
