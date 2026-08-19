@@ -46,12 +46,35 @@
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
     "Liberation Mono", monospace;
 
-  --s1: 4px;
-  --s2: 8px;
-  --s3: 12px;
-  --s4: 16px;
-  --s5: 24px;
-  --r: 6px;
+  /* Type scale — five steps, and nothing between them. The six sizes this
+     replaced lived inside a 4px range (11, 12, 12.5, 13, 14, 15); the 12 vs
+     12.5 pair was invisible on screen but real in the CSS, so it drifted.
+       11px / 600 / +0.07em / uppercase   section labels, eyebrows
+       13px / 400                         body, controls, hints
+       15px / 600                         panel titles, template names
+       22px / 500 / tabular               duration estimate  (reserved — #8)
+       34px / 500 / tabular               countdown digit    (reserved — #9)
+     22 and 34 are declared here but unused: both need the Type panel
+     restructured first, and 22px would otherwise land on `.meta`, which
+     Settings and Templates share. Weights: 400, 500, 600. Nothing else. */
+
+  /* Layout rhythm, named by intent rather than by size. The scale this replaced
+     used one value (12px) for the panel, for sections, for rows and for control
+     groups alike — and when every distance is equal nothing reads as grouped.
+     These are distances *between* elements, plus the padding a frame owes its
+     own content; padding *inside* a control is a different measurement and is
+     deliberately off this scale (see the controls section). */
+  --s-hair: 4px; /* inside one cluster: icon-button rows, action rows */
+  --s-tight: 8px; /* within a group: label to control, control to its hint */
+  --s-group: 20px; /* between groups */
+  --s-band: 32px; /* between Settings sections */
+  /* Frame to its content: the window gutter, and the same distance a dialog or
+     a sunken panel owes what sits inside it. Not on the rhythm above — it is
+     set by the frame, not by how the content is grouped. */
+  --s-edge: 16px;
+
+  --r-control: 4px; /* inputs, buttons, tabs — crisper, more instrument-like */
+  --r-surface: 10px; /* dialogs and sunken panels */
   --dur: 90ms;
 }
 
@@ -144,11 +167,22 @@ body,
   height: 100%;
 }
 
+/* Load-bearing, not tidying. The containers below space their children with
+   `> * + *` margins, which have the same specificity as a `margin: 0` on the
+   child's own class — so whichever came later in the file would win, and the
+   spacing rules would silently depend on declaration order. Resetting here
+   means no class needs to zero its margin, and that fight cannot start. */
+h2,
+p,
+ul {
+  margin: 0;
+}
+
 body {
   margin: 0;
   overflow: hidden;
   font-family: var(--font-ui);
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.45;
   color: var(--text);
   background: var(--bg);
@@ -177,8 +211,8 @@ body {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--s3);
-  padding: 10px var(--s4) var(--s2);
+  gap: var(--s-tight);
+  padding: var(--s-tight) var(--s-edge);
 }
 
 .wordmark {
@@ -188,7 +222,7 @@ body {
 }
 
 .status {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -196,26 +230,28 @@ body {
   text-overflow: ellipsis;
 }
 
+/* The 2px gap and padding are the inset of a segmented control, not layout
+   rhythm, so they stay literal — see the note in the controls section. */
 .tabs {
   display: flex;
   gap: 2px;
-  margin: 0 var(--s4) var(--s3);
+  margin: 0 var(--s-edge) var(--s-group);
   padding: 2px;
   background: var(--bg-sunken);
   border: 1px solid var(--border);
-  border-radius: var(--r);
+  border-radius: var(--r-control);
 }
 
 .tab {
   flex: 1 1 0;
   min-width: 0;
-  padding: 5px var(--s2);
+  padding: 5px 8px;
   font: inherit;
   font-size: 13px;
   color: var(--text-muted);
   background: transparent;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--r-control);
   cursor: pointer;
   transition:
     background-color var(--dur) ease,
@@ -238,9 +274,9 @@ body {
   display: flex;
   flex: 0 1 auto;
   flex-direction: column;
-  gap: var(--s2);
+  gap: var(--s-tight);
   max-height: 35%;
-  padding: 0 var(--s4) var(--s3);
+  padding: 0 var(--s-edge) var(--s-group);
   overflow-y: auto;
 }
 
@@ -256,22 +292,33 @@ body {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: var(--s3);
   min-height: 0;
-  padding: 0 var(--s4) var(--s4);
+  padding: 0 var(--s-edge) var(--s-edge);
+}
+
+/* Adjacent-sibling margins rather than `gap`, because a panel holds pairs that
+   belong together as well as pairs that don't, and `gap` is one value per
+   container. The exceptions live with the panel that owns them. */
+.panel > * + * {
+  margin-top: var(--s-group);
 }
 
 /* ============================================================ controls == */
 
+/* Padding *inside* a control is sized to that control — it sets how big the hit
+   target is, not how the screen is grouped — so it stays a literal and is
+   deliberately off the --s-* rhythm. Squeezing a button's 12px to --s-tight
+   just to spend a token would make the control smaller for no reason. */
+
 .btn {
-  padding: 6px var(--s3);
+  padding: 6px 12px;
   font: inherit;
   font-size: 13px;
   font-weight: 500;
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--border-strong);
-  border-radius: var(--r);
+  border-radius: var(--r-control);
   cursor: pointer;
   transition:
     background-color var(--dur) ease,
@@ -292,16 +339,15 @@ body {
   cursor: default;
 }
 
+/* Size is carried by padding alone: both variants keep the body step. */
 .btn--small {
   padding: 4px 9px;
-  font-size: 12px;
 }
 
 .btn--block {
   display: block;
   width: 100%;
-  padding: 9px var(--s3);
-  font-size: 14px;
+  padding: 9px 12px;
 }
 
 .btn--primary {
@@ -359,7 +405,7 @@ body {
   color: var(--text-muted);
   background: transparent;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--r-control);
   cursor: pointer;
   transition:
     background-color var(--dur) ease,
@@ -374,7 +420,7 @@ body {
 .link {
   padding: 0;
   font: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--accent-text);
   background: none;
   border: 0;
@@ -385,13 +431,13 @@ body {
 
 .input {
   width: 100%;
-  padding: 6px var(--s2);
+  padding: 6px 8px;
   font: inherit;
   font-size: 13px;
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--border-strong);
-  border-radius: var(--r);
+  border-radius: var(--r-control);
 }
 
 .input::placeholder {
@@ -400,6 +446,9 @@ body {
 
 .input--number {
   width: 84px;
+  /* The delay and countdown fields are edited digit by digit; without this the
+     value shifts sideways as you type. */
+  font-variant-numeric: tabular-nums;
   appearance: textfield;
   -moz-appearance: textfield;
 }
@@ -411,19 +460,19 @@ body {
 }
 
 .select {
-  padding: 5px var(--s2);
+  padding: 5px 8px;
 }
 
 .textarea {
   width: 100%;
-  padding: var(--s2) var(--s3);
+  padding: 8px 12px;
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.5;
   color: var(--text);
   background: var(--bg-sunken);
   border: 1px solid var(--border);
-  border-radius: var(--r);
+  border-radius: var(--r-control);
   resize: none;
 }
 
@@ -441,7 +490,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--s3);
+  gap: var(--s-tight);
   padding: 2px 0;
   cursor: pointer;
 }
@@ -454,7 +503,7 @@ body {
 .toggle-text {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: var(--s-hair);
   min-width: 0;
 }
 
@@ -462,8 +511,10 @@ body {
   font-size: 13px;
 }
 
+/* Same step as the label, distinguished by colour: the size pair this replaced
+   (13 against 12) was below the threshold where a reader sees a difference. */
 .toggle-description {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.4;
   color: var(--text-muted);
 }
@@ -476,6 +527,8 @@ body {
   pointer-events: none;
 }
 
+/* The radius is half the height — a pill, derived from the shape rather than
+   from --r-*. */
 .toggle-track {
   position: relative;
   flex: none;
@@ -537,31 +590,28 @@ body {
 
 .field {
   display: grid;
-  gap: 5px;
+  gap: var(--s-tight);
 }
 
 .field-label {
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--text-muted);
 }
 
 .field-hint {
-  margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
   color: var(--text-faint);
 }
 
 .field-error {
-  margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
   color: var(--danger);
 }
 
 .meta {
-  margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -570,22 +620,36 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--s3);
+  gap: var(--s-tight);
 }
 
 .section {
   display: flex;
   flex-direction: column;
-  gap: var(--s3);
 }
 
 .section-title {
-  margin: 0;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--text-faint);
+}
+
+/* Adjacent-sibling margins rather than `gap`, because three of the distances
+   inside a section differ and `gap` is a single value: the eyebrow belongs to
+   the group it labels rather than sitting between two, consecutive switches are
+   one group and not three, and everything else is group-to-group. Declared
+   after `.section-title` so no `margin` on a child's own class can win on
+   source order. */
+.section > * + * {
+  margin-top: var(--s-group);
+}
+
+.section > .section-title + *,
+.section > .toggle + .toggle,
+.section > .group-note + .toggle {
+  margin-top: var(--s-tight);
 }
 
 /* ============================================================== banner == */
@@ -594,12 +658,12 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--s2);
-  padding: var(--s2) var(--s2) var(--s2) var(--s3);
-  font-size: 12.5px;
+  gap: var(--s-tight);
+  padding: var(--s-tight);
+  font-size: 13px;
   line-height: 1.45;
   border: 1px solid;
-  border-radius: var(--r);
+  border-radius: var(--r-control);
 }
 
 .banner--info {
@@ -624,7 +688,7 @@ body {
 
 .banner-note {
   display: block;
-  margin-top: 2px;
+  margin-top: var(--s-hair);
   color: var(--text-muted);
 }
 
@@ -633,14 +697,14 @@ body {
 }
 
 .banner-line + .banner-line {
-  margin-top: 3px;
+  margin-top: var(--s-hair);
 }
 
 .banner-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--s2);
+  gap: var(--s-tight);
   margin-left: auto;
 }
 
@@ -651,18 +715,26 @@ body {
   min-height: 72px;
 }
 
+/* The readout describes the box above it and the hint describes the button
+   above it, so both belong to what they follow rather than sitting between two
+   groups. This is the exception `.panel > * + *` cannot express. */
+.type-panel > .meta,
+.type-panel > .helper {
+  margin-top: var(--s-tight);
+}
+
 .type-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--s3);
+  gap: var(--s-tight);
 }
 
 .inline-field {
   display: flex;
   align-items: center;
-  gap: var(--s2);
-  font-size: 12.5px;
+  gap: var(--s-tight);
+  font-size: 13px;
   color: var(--text-muted);
 }
 
@@ -670,6 +742,7 @@ body {
   margin-left: auto;
 }
 
+/* The radius is half the height — derived from the shape, not from --r-*. */
 .progress {
   height: 4px;
   overflow: hidden;
@@ -685,7 +758,6 @@ body {
 
 .countdown,
 .helper {
-  margin: 0;
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
@@ -696,19 +768,21 @@ body {
 }
 
 .helper {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-faint);
 }
 
 .result {
   display: flex;
   align-items: flex-start;
-  gap: var(--s2);
-  padding: 6px var(--s2) 6px var(--s3);
-  font-size: 12.5px;
+  gap: var(--s-tight);
+  padding: var(--s-tight);
+  font-size: 13px;
   line-height: 1.45;
+  /* The too-long-to-type message quotes a character count. */
+  font-variant-numeric: tabular-nums;
   border: 1px solid;
-  border-radius: var(--r);
+  border-radius: var(--r-control);
 }
 
 .result > span {
@@ -734,14 +808,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--s3);
+  gap: var(--s-tight);
 }
 
 .templates-scroll {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: var(--s3);
+  gap: var(--s-group);
   min-height: 0;
   overflow-y: auto;
 }
@@ -749,7 +823,6 @@ body {
 .templates-list {
   display: flex;
   flex-direction: column;
-  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -757,8 +830,8 @@ body {
 .template {
   display: flex;
   flex-direction: column;
-  gap: var(--s1);
-  padding: var(--s2) 0;
+  gap: var(--s-hair);
+  padding: var(--s-tight) 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -768,7 +841,7 @@ body {
 
 .template-name {
   overflow: hidden;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 600;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -777,7 +850,7 @@ body {
 .template-preview {
   overflow: hidden;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -786,36 +859,35 @@ body {
 .template-actions {
   display: flex;
   justify-content: flex-end;
-  gap: var(--s1);
+  gap: var(--s-hair);
 }
 
 .template-form {
   display: flex;
   flex-direction: column;
-  gap: var(--s2);
-  padding: var(--s3);
+  gap: var(--s-tight);
+  padding: var(--s-edge);
   background: var(--bg-sunken);
   border: 1px solid var(--border);
-  border-radius: var(--r);
+  border-radius: var(--r-surface);
 }
 
 .template-form-actions {
   display: flex;
   justify-content: flex-end;
-  gap: var(--s2);
+  gap: var(--s-tight);
 }
 
 .empty {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: var(--s3);
-  padding: var(--s3) 0;
+  gap: var(--s-group);
+  padding: var(--s-group) 0;
 }
 
 .empty p {
   max-width: 40ch;
-  margin: 0;
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-muted);
@@ -823,16 +895,18 @@ body {
 
 /* ====================================================== settings panel == */
 
+/* min-height holds the row open so it doesn't jump when "Saved" appears: one
+   line of the body step at line-height 1.45. */
 .settings-status {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--s2);
-  min-height: 17px;
+  gap: var(--s-tight);
+  min-height: 19px;
 }
 
 .saved-flash {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-muted);
   animation: fade-out 1.8s ease forwards;
 }
@@ -847,11 +921,13 @@ body {
   }
 }
 
-/* Pulled tight against the control group above it so it reads as a caveat on
-   the pair rather than as a separate row in the section. */
+/* Sits at group-internal distance from the switch above it so it reads as a
+   caveat on that pair rather than as a separate row in the section. This used
+   to need a negative margin to claw back the container's uniform gap; now it
+   just names the distance it wants and overrides `.section > * + *`. */
 .group-note {
-  margin: -6px 0 0;
-  font-size: 12px;
+  margin-top: var(--s-tight);
+  font-size: 13px;
   line-height: 1.45;
   color: var(--text-muted);
 }
@@ -860,29 +936,29 @@ body {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: var(--s5);
+  gap: var(--s-band);
   min-height: 0;
-  padding-bottom: var(--s2);
+  padding-bottom: var(--s-tight);
   overflow-y: auto;
 }
 
 .hotkey-row {
   display: flex;
   align-items: center;
-  gap: var(--s2);
+  gap: var(--s-tight);
 }
 
 .hotkey {
   flex: 1 1 auto;
   min-width: 0;
-  padding: 6px var(--s2);
+  padding: 6px 8px;
   font: inherit;
   font-size: 13px;
   text-align: left;
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--border-strong);
-  border-radius: var(--r);
+  border-radius: var(--r-control);
   cursor: pointer;
 }
 
@@ -897,7 +973,6 @@ body {
 
 .hotkey-value {
   font-family: var(--font-mono);
-  font-size: 12.5px;
 }
 
 .hotkey-prompt {
@@ -907,11 +982,11 @@ body {
 .storage {
   display: flex;
   flex-direction: column;
-  gap: var(--s2);
-  padding: var(--s3);
+  gap: var(--s-tight);
+  padding: var(--s-edge);
   background: var(--bg-sunken);
   border: 1px solid var(--border);
-  border-radius: var(--r);
+  border-radius: var(--r-surface);
 }
 
 .storage--warn {
@@ -921,7 +996,7 @@ body {
 
 .storage-path {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
   color: var(--text);
   word-break: break-all;
@@ -929,8 +1004,7 @@ body {
 }
 
 .storage-note {
-  margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
   color: var(--text-muted);
 }
@@ -939,16 +1013,15 @@ body {
    width of the storage block. */
 .storage-actions {
   display: flex;
-  gap: var(--s2);
+  gap: var(--s-tight);
 }
 
 .storage-notices {
   display: flex;
   flex-direction: column;
-  gap: var(--s1);
-  margin: 0;
-  padding-left: var(--s4);
-  font-size: 12px;
+  gap: var(--s-hair);
+  padding-left: var(--s-edge);
+  font-size: 13px;
   line-height: 1.45;
   color: var(--text);
 }
@@ -962,30 +1035,28 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--s4);
+  padding: var(--s-edge);
   background: var(--scrim);
 }
 
 .dialog {
   display: flex;
   flex-direction: column;
-  gap: var(--s2);
+  gap: var(--s-tight);
   width: 100%;
   max-width: 320px;
-  padding: var(--s4);
+  padding: var(--s-edge);
   background: var(--bg);
   border: 1px solid var(--border-strong);
-  border-radius: 8px;
+  border-radius: var(--r-surface);
 }
 
 .dialog-title {
-  margin: 0;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
 }
 
 .dialog-message {
-  margin: 0;
   font-size: 13px;
   line-height: 1.5;
   color: var(--text-muted);
@@ -995,8 +1066,8 @@ body {
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
-  gap: var(--s2);
-  margin-top: var(--s2);
+  gap: var(--s-tight);
+  margin-top: var(--s-tight);
 }
 
 /* ===================================================== reduced motion == */
