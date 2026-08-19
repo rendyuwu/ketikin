@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that it discards four platform builds that had already succeeded, and that CI cannot catch it —
   and no longer assumes a failed release left a GitHub release behind to delete.
   ([#1](https://github.com/rendyuwu/ketikin/issues/1))
+- CI and release builds no longer hang when the Ubuntu mirror the runners default to stops
+  answering. `apt-get update` had no timeout of its own for that case, so a job that hit it sat
+  silent for as long as an hour instead of failing; on the release path that meant the release
+  could not be published at all until someone cancelled the run by hand. The apt step now pins the
+  mirror and bounds apt's own waits, every job in both workflows has a `timeout-minutes` sized off
+  its observed runtime rather than GitHub's 360-minute default, and `docs/RELEASING.md` describes
+  the symptom alongside the other "the build looks fine and produces nothing" failure.
+  ([#18](https://github.com/rendyuwu/ketikin/issues/18))
 
 ## [0.1.0] - 2026-08-19
 
