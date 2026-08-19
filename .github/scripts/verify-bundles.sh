@@ -24,7 +24,10 @@ die() {
 # "<human label>|<find -name pattern>"
 case "$id" in
   linux-*)
-    expected=("AppImage|*.AppImage" "Debian package|*.deb")
+    # .rpm is listed because README.md offers it to Fedora/RHEL users. The rpm
+    # bundler skips silently when its tooling is unavailable, which would
+    # otherwise leave CI green while that download link 404s on the release.
+    expected=("AppImage|*.AppImage" "Debian package|*.deb" "RPM package|*.rpm")
     ;;
   windows-*)
     expected=("MSI installer|*.msi" "NSIS installer|*-setup.exe")

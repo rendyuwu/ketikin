@@ -42,7 +42,23 @@ export type StorageInfo = {
   source: StorageSource;
   writable: boolean;
   error: string | null;
+  /**
+   * Recoverable-but-important conditions: a corrupt templates file that was
+   * reset, or data landing somewhere other users of the machine can write.
+   * Full sentences, rendered verbatim. Empty when there's nothing to say.
+   */
+  notices: string[];
+  /**
+   * The backend's own verdict, and the same value it gates `storage://warning`
+   * on. Gate the banner on this rather than re-deriving it: a deliberate
+   * portable install (`nextToExe`) carries notices but is *not* degraded, and
+   * that policy belongs to one owner.
+   */
+  degraded: boolean;
 };
+
+/** Result of `tray_status()` — the pollable form of `tray://unavailable`. */
+export type TrayStatus = { available: boolean; message: string | null };
 
 export type TypingPhase = "idle" | "countdown" | "typing";
 

@@ -1,18 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { errorMessage, getSettings, saveSettings } from "../lib/api";
+import { reassertCapture } from "../lib/hotkeyCapture";
 import { DEFAULT_SETTINGS, type Settings } from "../lib/types";
 
 const SAVE_DEBOUNCE_MS = 400;
 const SAVED_FLASH_MS = 1800;
 
+/**
+ * Which operation failed, so Retry can repeat *that* one. A failed save must
+ * be retried with the pending edits still in hand; reloading from disk there
+ * would discard exactly the changes the user is trying to keep.
+ */
+export type SettingsError = { kind: "load" | "save"; message: string };
+
 export type UseSettings = {
   settings: Settings;
   loaded: boolean;
-  error: string | null;
+  error: SettingsError | null;
   justSaved: boolean;
   update: (patch: Partial<Settings>) => void;
   retry: () => void;
+  discard: () => void;
   dismissError: () => void;
 };
 
@@ -24,7 +33,7 @@ export type UseSettings = {
 export function useSettings(): UseSettings {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [loaded, setLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<SettingsError | null>(null);
   const [justSaved, setJustSaved] = useState(false);
 
   const latest = useRef<Settings>(settings);
@@ -38,8 +47,15 @@ export function useSettings(): UseSettings {
     setSettings(next);
   }, []);
 
+  const cancelPendingSave = useCallback(() => {
+    if (saveTimer.current !== null) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+  }, []);
+
   const flush = useCallback(async () => {
-    saveTimer.current = null;
+    cancelPendingSave();
     const at = revision.current;
     const payload = latest.current;
 
@@ -55,9 +71,13 @@ export function useSettings(): UseSettings {
         if (mounted.current) setJustSaved(false);
       }, SAVED_FLASH_MS);
     } catch (err) {
-      if (mounted.current) setError(errorMessage(err));
+      if (mounted.current) setError({ kind: "save", message: errorMessage(err) });
+    } finally {
+      // The backend expires any outstanding hotkey suspend on save, whether or
+      // not it succeeded, so this has to run on both paths.
+      reassertCapture();
     }
-  }, [apply]);
+  }, [apply, cancelPendingSave]);
 
   const load = useCallback(async () => {
     const at = revision.current;
@@ -67,7 +87,7 @@ export function useSettings(): UseSettings {
       if (revision.current === at) apply(loadedSettings);
       setError(null);
     } catch (err) {
-      if (mounted.current) setError(errorMessage(err));
+      if (mounted.current) setError({ kind: "load", message: errorMessage(err) });
     } finally {
       if (mounted.current) setLoaded(true);
     }
@@ -88,18 +108,39 @@ export function useSettings(): UseSettings {
       revision.current += 1;
       apply({ ...latest.current, ...patch });
       setJustSaved(false);
-      if (saveTimer.current !== null) clearTimeout(saveTimer.current);
+      cancelPendingSave();
       saveTimer.current = window.setTimeout(() => void flush(), SAVE_DEBOUNCE_MS);
     },
-    [apply, flush],
+    [apply, cancelPendingSave, flush],
   );
 
+  /** Repeats whichever call failed, keeping the user's pending edits intact. */
   const retry = useCallback(() => {
+    const kind = error?.kind;
+    setError(null);
+    if (kind === "save") void flush();
+    else void load();
+  }, [error, flush, load]);
+
+  /** The explicit opt-in to throwing edits away and reloading from disk. */
+  const discard = useCallback(() => {
+    cancelPendingSave();
+    // Invalidate any in-flight save so its response can't reinstate the edits.
+    revision.current += 1;
     setError(null);
     void load();
-  }, [load]);
+  }, [cancelPendingSave, load]);
 
   const dismissError = useCallback(() => setError(null), []);
 
-  return { settings, loaded, error, justSaved, update, retry, dismissError };
+  return {
+    settings,
+    loaded,
+    error,
+    justSaved,
+    update,
+    retry,
+    discard,
+    dismissError,
+  };
 }

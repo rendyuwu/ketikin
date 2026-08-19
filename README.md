@@ -102,9 +102,9 @@ right place before it expires.
 
 ## Templates
 
-The Templates panel holds the snippets you find yourself typing repeatedly: a network config
-block, a recovery command, a licence key, the same five-line bootstrap script you run on every new
-VM.
+The Templates panel holds the snippets you find yourself typing repeatedly: a network
+configuration block, a diagnostic command you run on every host, a support signature, or the
+boilerplate header you paste at the top of every ticket.
 
 - **Save** a template with a name and its content.
 - **Click** a template to load its content into the Type panel's text box.
@@ -113,6 +113,24 @@ VM.
 
 Templates live in `templates.json` alongside your settings, in the storage location described in
 [Where your data is stored](#where-your-data-is-stored). Nothing is uploaded anywhere.
+
+### Templates are not a place for secrets
+
+Templates are stored as plain text. **Do not save passwords, API keys, licence keys, tokens, or
+recovery codes as templates.** Paste those straight into the Type panel instead, which Ketikin
+never writes to disk.
+
+There is a second reason beyond plaintext storage, and it is the more serious one. On locked-down
+machines the storage chain can land `templates.json` in a location shared with other users of that
+machine — and shared can mean writable, not just readable. Anyone who can write that file can add
+or alter a template, and its content is whatever gets typed when you click it. Since the whole
+point of Ketikin is typing into privileged consoles, a template you did not write is a command you
+did not intend to run.
+
+So treat the template list as something you should recognise. If a template appears that you do not
+remember creating, or the content of one has changed, do not use it. Settings > Storage tells you
+where `templates.json` actually lives and flags when that location is shared; check it before
+saving anything you would mind another user of the machine reading or altering.
 
 ## Settings reference
 
@@ -125,8 +143,8 @@ Templates live in `templates.json` alongside your settings, in the storage locat
 | Close to tray | `closeToTray` | `true` | Closing the window hides it to the tray instead of quitting. Use Quit in the tray menu to actually exit. |
 | Always on top | `alwaysOnTop` | `false` | Keeps the Ketikin window above other windows. |
 | Global hotkeys | `hotkeysEnabled` | `true` | Master switch for the two hotkeys below. Turn it off to release both key combinations entirely. |
-| Start hotkey | `startHotkey` | `"CommandOrControl+Alt+T"` | Starts typing the current contents of the text box without focusing Ketikin. Displayed as `Ctrl+Alt+T` on Windows and Linux, `Cmd+Alt+T` on macOS. |
-| Stop hotkey | `stopHotkey` | `"CommandOrControl+Alt+X"` | Aborts a typing run in progress, and cancels the countdown if it is still running. Displayed as `Ctrl+Alt+X` / `Cmd+Alt+X`. |
+| Start hotkey | `startHotkey` | `"CommandOrControl+Alt+T"` | Starts typing the current contents of the text box without focusing Ketikin. Displayed as `Ctrl+Alt+T` on Windows and Linux, `⌘+Alt+T` on macOS. |
+| Stop hotkey | `stopHotkey` | `"CommandOrControl+Alt+X"` | Aborts a typing run in progress, and cancels the countdown if it is still running. Displayed as `Ctrl+Alt+X` on Windows and Linux, `⌘+Alt+X` on macOS. |
 | Newline handling | `newlineMode` | `"enter"` | How line breaks in your text are typed. `"enter"` presses Enter, which is what you want for a shell or console. `"shiftEnter"` presses Shift+Enter, useful in chat boxes and web consoles where Enter submits instead of inserting a line. `"skip"` drops line breaks entirely and types the text as one continuous line. |
 | Auto-check for updates | `autoCheckUpdates` | `true` | Checks GitHub Releases on launch and roughly once an hour afterwards. See [Auto-update](#auto-update). |
 
@@ -150,14 +168,14 @@ to click back to Ketikin to stop it.
 
 | Action | Windows / Linux | macOS |
 | --- | --- | --- |
-| Start typing | `Ctrl+Alt+T` | `Cmd+Alt+T` |
-| Stop typing | `Ctrl+Alt+X` | `Cmd+Alt+X` |
+| Start typing | `Ctrl+Alt+T` | `⌘+Alt+T` |
+| Stop typing | `Ctrl+Alt+X` | `⌘+Alt+X` |
 
 The stop hotkey also cancels the countdown, so it works as an abort at any point between pressing
 Start and the last character being typed.
 
 Both combinations can be rebound in Settings, and the whole feature can be disabled there if you
-would rather not have Ketikin hold on to a global key combination. Bindings are written as
+would rather not have Ketikin hold on to a global key combination. Bindings are stored as
 accelerator strings: one or more modifiers joined to a key with `+`. `CommandOrControl` maps to
 Cmd on macOS and Ctrl everywhere else, which is why one default covers all three platforms. The
 other modifiers are `Alt`, `Shift`, and `Super`.
@@ -165,13 +183,35 @@ other modifiers are `Alt`, `Shift`, and `Super`.
 ```
 CommandOrControl+Alt+T
 Alt+Shift+F9
-Super+K
+Super+Alt+K
 ```
 
-A rebind takes effect as soon as you save it. Global hotkeys are exclusive — if the combination is
-already claimed by another application or by the operating system itself, registration fails,
-Settings shows an inline error next to that field, and your previous binding stays active. Nothing
-is silently lost; pick a different combination and save again.
+Only Cmd is shown as a glyph. `Alt`, `Shift`, and `Ctrl` are always spelled out and the `+`
+separators are kept, so a binding reads as `⌘+Alt+T` on macOS and `Ctrl+Alt+T` elsewhere.
+
+`Super` is worth one note. On Windows and Linux it is the Windows/Super key and you can bind it
+normally. On macOS, Super *is* Cmd, so pressing it records `CommandOrControl` instead — you cannot
+produce a `Super` binding from a Mac, though one saved elsewhere still works and displays as `⌘`.
+
+Accelerators are stored exactly as written. Ketikin trims surrounding whitespace and otherwise
+saves the string unchanged: modifiers are not reordered, case is preserved, and aliases are left
+alone, so `Control` stays `Control` and `CmdOrCtrl` stays `CmdOrCtrl`. All of those forms work.
+This matters if you edit `settings.json` by hand — what you write is what you get back. One
+consequence to know about: Ketikin decides whether to re-register a hotkey by comparing the strings
+exactly, so changing `Alt+K` to `alt+k` counts as a change and triggers a rebind. It is harmless,
+just not a no-op. Start and stop must also differ, compared without regard to case.
+
+A rebind takes effect as soon as you save it. Global hotkeys are exclusive: if the combination is
+already claimed by another application, registration fails, Settings shows an inline error under
+that field, and your previous binding stays active. Nothing is silently lost — pick a different
+combination and save again.
+
+Combinations the desktop itself reserves are the awkward case, because they fail earlier and more
+quietly. Windows keeps most `Win`+letter shortcuts for the shell, and GNOME binds a good number of
+`Super`+letter chords to the compositor. If the desktop claims a chord before Ketikin sees it, the
+capture field may simply never register the keypress — it keeps waiting, with no error to show,
+because nothing reached the app. Adding a second modifier, as in `Super+Alt+K`, usually steps
+around it.
 
 ## Auto-update
 
@@ -207,7 +247,8 @@ and are not affected by any of this.
 
 ## Where your data is stored
 
-Ketikin writes two files: `settings.json` and `templates.json`.
+Ketikin writes two files, `settings.json` and `templates.json`, plus a `logs/` subdirectory
+described under [Log files](#log-files).
 
 Rather than assuming one fixed directory exists and is writable, Ketikin tries a chain of
 locations in order and uses the first one it can actually write to. It then remembers which one it
@@ -223,19 +264,81 @@ picked.
    machines where the user profile is off limits.
 5. **The system temp directory** — a last resort. Data stored here may not survive a reboot.
 
-Writes are atomic: Ketikin writes to a temporary file first and then renames it into place, so an
-interrupted write cannot leave you with a truncated or corrupt `templates.json`.
+Worth being honest about one of these: on Windows the first candidate already lives inside
+`%APPDATA%`, so candidate 2 is not really an independent second chance — if `%APPDATA%` is missing
+or unwritable, the first two usually fail together. The genuine recovery comes from the last three:
+`%LOCALAPPDATA%` is a different root that survives when the roaming profile does not, the folder
+beside the executable works when the profile is off limits entirely, and temp is the final
+backstop.
+
+Writes are atomic: Ketikin writes to a temporary file first and then renames it into place. That
+means a crash, a power loss, or a full disk *while saving* leaves your previous file intact rather
+than truncated — the rename either completes or it does not. It is not a blanket promise that
+`templates.json` can never be corrupted; a file damaged by something outside Ketikin is still
+damaged.
 
 If every location in the chain fails, Ketikin does not crash. It keeps running with your settings
-and templates held in memory for the session and shows a warning banner so you know that nothing
-will be persisted.
+and templates held in memory for the session, and warns you that nothing will be persisted.
 
-This fallback chain is the reason Ketikin works on **Windows Server, RDP session hosts, and
-roaming-profile setups**, where the user profile directory is frequently unavailable, redirected,
-or read-only. On a normal desktop you will never notice it; on a jump box you will.
+That last-three fallback is the reason Ketikin works on **Windows Server, RDP session hosts, and
+roaming-profile setups**, where the roaming profile directory is frequently unavailable,
+redirected, or read-only. On a normal desktop you will never notice it; on a jump box you will.
 
-Settings displays the path that was actually resolved and which entry in the chain it came from,
-so you can confirm at a glance where your data went and whether Ketikin had to fall back.
+### Checking where your data went
+
+**Settings > Storage is the authoritative view.** It shows the path that was actually resolved,
+which entry in the chain produced it, and any notices attached to that location.
+
+A warning banner is deliberately narrower than that. It appears only for the two conditions that
+are always broken:
+
+- **The system temp directory**, where data may not survive a reboot.
+- **In-memory mode**, where nothing is saved at all.
+
+Running from the `data` folder beside the executable does *not* raise a banner, because that is a
+perfectly valid portable deployment rather than a fault — warning on every launch of a working
+setup only teaches people to click warnings away. Its notices still appear in Settings > Storage:
+that the location may be shared with other users of the machine, and that which directory Ketikin
+resolves can depend on whether it was launched elevated.
+
+That last point catches people out on Windows. Running Ketikin as administrator and running it
+normally can resolve to *different* data directories on locked-down machines, so templates and
+settings you configured in an elevated session may look like they have vanished on an ordinary
+launch. They have not — Ketikin is simply reading a different directory. Compare the path in
+Settings > Storage between the two.
+
+### Log files
+
+Ketikin writes a log into a **`logs/` subdirectory of whichever directory it resolved above** — not
+directly beside `settings.json`. If Settings shows
+`C:\Users\alice\AppData\Roaming\com.rendyuwu.ketikin`, the log is at
+
+```
+C:\Users\alice\AppData\Roaming\com.rendyuwu.ketikin\logs\Ketikin.log
+```
+
+The active file is `Ketikin.log`. It rotates at 1 MB and two rotated files are kept, named with a
+timestamp like `Ketikin_2026-08-19_14-30-00.log`, so the whole directory stays around 3 MB. When
+reporting a problem, attach the entire `logs/` directory rather than just `Ketikin.log` — a
+startup problem may well have rotated into a dated file by the time you notice it.
+
+The log follows the storage chain wherever it goes, including the temp directory. Be aware that
+temp is cleared automatically on many systems, so a log written there can disappear between the
+problem happening and you reporting it.
+
+**There are two cases where no log exists at all.**
+
+The first is in-memory mode. If every storage location failed, there is no log file anywhere —
+logging falls back to standard output, which a Windows release build discards.
+
+The second is subtler and specific to Windows permissions: the data directory itself is writable,
+but the `logs/` subdirectory cannot be created. Windows grants permission to add files and
+permission to add subdirectories separately, so a directory you can save `settings.json` into may
+still refuse a new folder. Your data saves normally and no log ever appears.
+
+**If you cannot find a log file, look at Settings > Storage.** It says outright when file logging
+is unavailable, and it carries the resolved path, the fallback source, the error, and any notices
+— which is the whole diagnostic surface when there is no file to read. Screenshot that instead.
 
 ## Platform notes
 
@@ -299,11 +402,21 @@ to an X11 session (or one with XWayland available) and try again. Ketikin talks 
 directly, so there is no separate input package to install — if there is no X server or XWayland
 to talk to, there is nothing for it to type into.
 
+**Ketikin does nothing at all when I launch it — no window ever appears.**
+Look for `ketikin-startup-error.log` in the data directory. When startup fails before a window can
+exist there is nowhere to show an error, and on Windows there is no console to print to either, so
+Ketikin leaves that file behind as a breadcrumb. It is the first thing to find. Note that it can
+only be written if a storage location resolved, so its absence does not rule startup failure out.
+
 **Settings or templates are not being saved.**
-Open Settings and look at the data location it reports. If it shows the system temp directory, the
-earlier locations were not writable and your data will not survive a reboot — check permissions on
-your application-data directory. If a warning banner is showing instead, no location was writable
-at all and Ketikin is running purely in memory for this session.
+Open **Settings > Storage** and look at the reported location. If it shows the system temp
+directory, the earlier candidates were not writable and your data will not survive a reboot —
+check permissions on your application-data directory. If it reports in-memory mode, no location
+was writable at all and nothing is being saved this session.
+
+On Windows, also check whether you are comparing like with like: an elevated Ketikin and a normal
+one can resolve to different directories, so settings you saved as administrator can look missing
+on an ordinary launch. Compare the path shown in Settings > Storage between the two.
 
 **On Linux, an update is announced but there is no way to install it.**
 This is expected on a `.deb` or `.rpm` install. Only the AppImage can replace itself in place, so
@@ -333,9 +446,37 @@ shows an inline error next to that field and keeps your previous binding — so 
 to have no effect, check for that error before assuming the new combination is active. Also
 confirm the global hotkeys master switch is on.
 
+**The hotkey field ignores me — I press a combination and nothing is captured.**
+This is a different problem from the one above, and it is the more confusing of the two. When
+registration fails you at least get an error under the field. Here you get nothing at all: the
+field keeps waiting for a key combination as though you had not pressed anything.
+
+That usually means the desktop grabbed the chord before Ketikin could see it, so there was no
+keypress to capture and nothing to report. `Win`+letter combinations on Windows and `Super`+letter
+combinations on GNOME are the common culprits, since both are largely reserved by the shell. Add a
+second modifier — `Super+Alt+K` rather than `Super+K` — and the combination will usually reach the
+app.
+
+On macOS, note that the Super key *is* Cmd, so pressing it records `CommandOrControl`. That is
+expected, not a fault.
+
+**Settings will not let me save my hotkey — it says it conflicts with Ketikin.**
+Start and stop cannot be the same combination. The check ignores case, so `Alt+K` and `alt+k`
+count as the same binding. Pick a different one for whichever you are changing.
+
+If you hand-edited `settings.json` to give both the same value, note that the file still loads —
+validation happens on save, not on load — but only the first of the two hotkeys will register, and
+the second reports an error in Settings.
+
 **Characters come out wrong or in the wrong order.**
 Increase the typing delay. Remote consoles, KVM-over-IP devices, and high-latency RDP sessions
 regularly drop or reorder input that arrives faster than they can process it.
+
+**I need to report a bug — what should I include?**
+Attach the `logs/` directory from your data folder, and say which platform and version you are on
+and how you installed it. **Settings > Storage** shows the data path; the logs live in a `logs/`
+subdirectory of it. If there is no log file, screenshot Settings > Storage instead — see
+[Log files](#log-files) for why it may be missing and what that panel tells you in its place.
 
 ## Building from source
 
@@ -369,9 +510,18 @@ Be deliberate when the text you are about to type is a secret. Ketikin types int
 focused, and if the wrong window is focused, your credential goes there instead. The countdown
 exists precisely so you can look at the screen and confirm the target before anything is sent.
 
-The contents of the Type panel's text box are never written to disk. They exist only in memory for
-as long as the app is running, unless you explicitly save them as a template — in which case they
-are stored in plaintext in `templates.json`, so think twice before saving a password as one.
+Ketikin never writes the contents of the Type panel's text box to disk. The only way that text
+reaches storage is if you explicitly save it as a template — and templates are the wrong place for
+a secret, for reasons covered under
+[Templates are not a place for secrets](#templates-are-not-a-place-for-secrets). Paste credentials
+into the Type panel and leave them there.
+
+That covers what Ketikin itself does, but it is not the same as a guarantee that the text never
+touches disk anywhere. It stays in memory, unscrubbed, for as long as the app is running, so it can
+be reached by anything that can read the process — a debugger, a memory dump, or the swap file. On
+Windows specifically, the app renders in WebView2, which maintains its own user-data directory and
+can write crash dumps containing WebView heap. If you are handling credentials that must never
+reach disk under any circumstances, that is a stronger requirement than Ketikin is built to meet.
 
 To report a security vulnerability, see [SECURITY.md](SECURITY.md).
 

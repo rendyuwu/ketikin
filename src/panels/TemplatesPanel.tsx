@@ -15,7 +15,13 @@ type Draft = { id: string | null; name: string; content: string };
 
 const EMPTY_DRAFT: Draft = { id: null, name: "", content: "" };
 
-const preview = (content: string) => content.replace(/\s+/g, " ").trim();
+/**
+ * Slice first: the row is a single ellipsised line, so collapsing whitespace
+ * across a whole large template on every render is wasted work.
+ */
+const PREVIEW_CHARS = 140;
+const preview = (content: string) =>
+  content.slice(0, PREVIEW_CHARS).replace(/\s+/g, " ").trim();
 
 export function TemplatesPanel({ templates, onUse }: TemplatesPanelProps) {
   const { templates: items, loading, error, create, save, remove, dismissError } =

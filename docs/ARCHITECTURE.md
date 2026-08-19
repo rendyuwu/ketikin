@@ -21,7 +21,7 @@ surface in one place.
 | Module | Responsibility |
 | --- | --- |
 | Storage | Resolves where data lives, reads and writes `settings.json` and `templates.json` atomically, and exposes both the resolved path and which entry of the fallback chain produced it so the UI can display them. |
-| Settings | The settings model, its defaults, and range validation. Missing or unrecognised keys fall back to defaults, so older and hand-edited files still load. Applies settings with runtime effects — theme, always-on-top, tray behaviour — and re-registers hotkeys when they change. |
+| Settings | The settings model, its defaults, and range validation. Missing or unrecognised keys fall back to defaults, so older and hand-edited files still load. Saving clamps out-of-range values and returns the normalized settings. It does not apply them: theme is applied by the frontend, and always-on-top and hotkey re-registration are driven from `lib.rs`. |
 | Templates | CRUD over the saved snippets, persisted through storage. |
 | Typing engine | Turns a block of text into keystrokes. Owns the countdown, the per-keystroke delay, newline handling, and the cancellable worker. |
 | Hotkeys | Registers and unregisters the global start and stop accelerators and maps them onto the typing engine's start and stop. Registration can fail when another process already owns a combination; the failure is surfaced to the UI and the previous binding is kept. |
@@ -64,18 +64,37 @@ candidates, uses the first one it can successfully write to, and remembers the c
 4. A `data` folder beside the executable — portable and locked-down installs
 5. The system temp directory — last resort, may not survive a reboot
 
-This exists for Windows Server, RDP session hosts, and roaming-profile environments, where the
-profile directory is regularly redirected, unavailable, or read-only. On an ordinary desktop the
-first candidate always wins and the rest never runs.
+Candidate 2 is close to redundant on Windows: candidate 1 resolves to a subdirectory of `%APPDATA%`
+already, so if `%APPDATA%` is unwritable or unset, both usually fail together. The meaningful
+recovery comes from candidates 3, 4, and 5 — a different root, a directory beside the executable,
+or temp. That is what carries Windows Server, RDP session hosts, and roaming-profile environments,
+where the roaming profile is regularly redirected, unavailable, or read-only. On an ordinary
+desktop the first candidate wins and the rest never runs.
 
 Writes are **atomic**: serialize to a temporary file in the target directory, flush, then rename
-over the destination. A crash or a full disk mid-write leaves the previous good file intact rather
-than a truncated one.
+over the destination. The guarantee this buys is that a crash, power loss, or full disk *during a
+write* leaves the previous file intact instead of truncating it — the rename either happens or it
+does not. It is not a guarantee against every form of corruption: a file damaged out from under the
+app, or a filesystem that reorders the rename against the data, is outside what this protects.
 
 If every candidate fails, storage degrades to an **in-memory mode** instead of returning a fatal
-error. The app runs normally for the session, nothing is persisted, and the frontend shows a
-warning banner. Refusing to start would be the wrong behaviour for a tool whose main job — typing
-text into another window — does not need the disk at all.
+error. The app runs normally for the session and nothing is persisted. Refusing to start would be
+the wrong behaviour for a tool whose main job — typing into another window — does not need the disk.
+
+Storage reports its result as a path, the chain entry that produced it, an optional error, and a
+list of notices. The UI splits that into two channels deliberately. The **banner** fires only for
+temp and in-memory, which are always failures. Running from the folder beside the executable does
+not raise one — it is a supported portable deployment, and warning on every launch of a working
+install would train users to dismiss warnings. Its notices, including that the location may be
+shared with other users and that the resolved directory can depend on elevation, surface in
+**Settings > Storage**, which is the complete view.
+
+Logging is anchored to the same resolved directory in a `logs/` subdirectory, so it follows the
+chain wherever it lands. Two consequences: in-memory mode has no log at all, since logging falls
+back to stdout and a Windows release build discards it; and the `logs/` subdirectory can fail to
+be created even when the data directory is writable, because Windows grants file creation and
+subdirectory creation separately. In both cases Settings > Storage is the only diagnostic channel,
+which is why it reports when file logging is unavailable.
 
 ## Frontend (`src/`)
 
@@ -87,7 +106,14 @@ The UI is three panels:
   panel's text box.
 - **Settings** — every setting from the settings module, plus the read-only data location.
 
-State lives in the Rust core, not the frontend. The panels read it through commands on mount and
-after mutations, rather than keeping a parallel copy that could disagree with what is on disk. The
-one exception is the Type panel's text box, which is deliberately frontend-only and in-memory —
-its contents are never persisted unless the user explicitly saves them as a template.
+The Rust core is the authority for persisted state, but the Settings panel does not wait on it.
+`useSettings` keeps optimistic local state: an edit updates the UI immediately and schedules a save
+behind a 400 ms debounce, so a user dragging a slider does not generate a write per frame. During
+that window the frontend deliberately holds a value the backend has not seen yet. When the save
+lands, the backend returns the normalized settings — clamped to the documented ranges — and the UI
+re-renders from that response, which is what makes an out-of-range entry snap back to the limit.
+The backend's answer wins; the local copy is a latency hiding measure, not a second source of
+truth.
+
+The Type panel's text box is different again: it is frontend-only and never sent to storage unless
+the user explicitly saves it as a template.

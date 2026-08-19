@@ -14,8 +14,9 @@ import {
   onTrayUnavailable,
   storageInfo,
   subscribe,
+  trayStatus,
 } from "./lib/api";
-import { formatCount, isStorageDegraded } from "./lib/format";
+import { formatCount, isStorageUnreliable } from "./lib/format";
 import type { StorageInfo, TypingState } from "./lib/types";
 import { SettingsPanel } from "./panels/SettingsPanel";
 import { TemplatesPanel } from "./panels/TemplatesPanel";
@@ -28,6 +29,15 @@ const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
   { id: "templates", label: "Templates" },
   { id: "settings", label: "Settings" },
 ];
+
+/**
+ * The backend guarantees a non-null message whenever the tray is unavailable,
+ * so this should never render. Kept because the wire type still permits null,
+ * and a null there would show no banner at all — which is precisely the silent
+ * stranding (no tray, no way to quit) that the whole check exists to prevent.
+ */
+const TRAY_FALLBACK =
+  "The system tray is unavailable on this system, so Ketikin will not minimize or close to the tray.";
 
 function statusLabel(state: TypingState): string {
   if (state.phase === "countdown") return `Starting in ${state.countdown}…`;
@@ -44,6 +54,7 @@ export default function App() {
   const [storageError, setStorageError] = useState<string | null>(null);
   const [storageDismissed, setStorageDismissed] = useState(false);
   const [trayMessage, setTrayMessage] = useState<string | null>(null);
+  const [trayError, setTrayError] = useState<string | null>(null);
   const [hotkeyErrors, setHotkeyErrors] = useState<{
     start: string | null;
     stop: string | null;
@@ -72,12 +83,21 @@ export default function App() {
   useEffect(() => {
     let alive = true;
 
+    // `tray_status()` is the authoritative read: the tray outcome is decided
+    // synchronously in the backend's setup hook, before the event loop that
+    // handles IPC even starts, so a poll can never observe a premature
+    // "available". `tray://unavailable` is the redundant nudge — it fires once
+    // ~1.5s in and isn't buffered, so a slow WebView2 cold start misses it.
+    // The two always agree, so first writer wins and neither can clobber.
+    const noteTray = (message: string) =>
+      setTrayMessage((previous) => previous ?? message);
+
     const unsubscribe = subscribe([
       onStorageWarning((info) => {
         setStorage(info);
         setStorageDismissed(false);
       }),
-      onTrayUnavailable(({ message }) => setTrayMessage(message)),
+      onTrayUnavailable(({ message }) => noteTray(message)),
     ]);
 
     storageInfo()
@@ -86,6 +106,14 @@ export default function App() {
       })
       .catch((err: unknown) => {
         if (alive) setStorageError(errorMessage(err));
+      });
+
+    trayStatus()
+      .then(({ available, message }) => {
+        if (alive && !available) noteTray(message ?? TRAY_FALLBACK);
+      })
+      .catch((err: unknown) => {
+        if (alive) setTrayError(errorMessage(err));
       });
 
     return () => {
@@ -126,8 +154,14 @@ export default function App() {
     tabRefs.current[next]?.focus();
   }
 
-  const storageDegraded = storage ? isStorageDegraded(storage) : false;
+  const storageUnreliable = storage ? isStorageUnreliable(storage) : false;
   const storagePinned = storage?.source === "memory";
+  const notices = storage?.notices ?? [];
+  // Notices can arrive on a perfectly healthy path — a reset templates file is
+  // worth saying out loud even when nothing is degraded.
+  // The backend's verdict, not a re-derivation: a portable install carries
+  // notices but is deliberately not degraded, so it must not raise a banner.
+  const showStorage = storage !== null && storage.degraded && !storageDismissed;
   const updateInfo = updater.dismissed ? null : updater.info;
 
   return (
@@ -162,35 +196,68 @@ export default function App() {
         ))}
       </div>
 
-      {settings.error || (storageDegraded && !storageDismissed) || trayMessage ||
-      updateInfo || updater.error ? (
+      {settings.error || showStorage || trayMessage || trayError || updateInfo ||
+      updater.error ? (
         <div className="banners">
           {settings.error ? (
             <Banner
               tone="error"
               onDismiss={settings.dismissError}
               actions={
-                <button type="button" className="btn btn--small" onClick={settings.retry}>
-                  Retry
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="btn btn--small"
+                    onClick={settings.retry}
+                  >
+                    Retry
+                  </button>
+                  {/* Only a failed save has edits worth discarding. */}
+                  {settings.error.kind === "save" ? (
+                    <button
+                      type="button"
+                      className="btn btn--quiet btn--small"
+                      onClick={settings.discard}
+                    >
+                      Discard changes
+                    </button>
+                  ) : null}
+                </>
               }
             >
-              {settings.error}
+              {settings.error.message}
             </Banner>
           ) : null}
 
-          {storage && storageDegraded && !storageDismissed ? (
+          {showStorage ? (
             <Banner
               tone="warn"
               onDismiss={storagePinned ? undefined : () => setStorageDismissed(true)}
             >
-              {storagePinned
-                ? "Settings and templates are not being saved to disk. They will be lost when Ketikin closes."
-                : "Settings and templates may not be saved reliably. See Storage in Settings."}
+              {storageUnreliable ? (
+                <span className="banner-line">
+                  {storagePinned
+                    ? "Settings and templates are not being saved to disk. They will be lost when Ketikin closes."
+                    : "Settings and templates may not be saved reliably. See Storage in Settings."}
+                </span>
+              ) : null}
+              {/* Dismissing only hides the banner — Settings > Storage keeps
+                  showing these so they can always be found again. */}
+              {notices.map((notice) => (
+                <span className="banner-line" key={notice}>
+                  {notice}
+                </span>
+              ))}
             </Banner>
           ) : null}
 
           {trayMessage ? <Banner tone="warn">{trayMessage}</Banner> : null}
+
+          {trayError ? (
+            <Banner tone="error" onDismiss={() => setTrayError(null)}>
+              {trayError}
+            </Banner>
+          ) : null}
 
           {updateInfo ? (
             <Banner

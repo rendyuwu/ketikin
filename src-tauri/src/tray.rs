@@ -29,7 +29,20 @@ const MENU_HIDE: &str = "hide";
 const MENU_QUIT: &str = "quit";
 
 /// Emitted once at startup when the tray could not be created.
+///
+/// Fire-and-forget: `emit` does not buffer, so a WebView that is still starting
+/// up misses it entirely. The `tray_status` command is the pull-based fallback
+/// and is the one the frontend should rely on for correctness.
 pub const EVENT_UNAVAILABLE: &str = "tray://unavailable";
+
+/// Reply from the `tray_status` command.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrayStatus {
+    pub available: bool,
+    /// Explanation when `available` is false, otherwise `null`.
+    pub message: Option<String>,
+}
 
 /// Explain a tray construction failure in terms the user can act on.
 ///

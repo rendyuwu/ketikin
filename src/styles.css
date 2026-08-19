@@ -604,6 +604,14 @@ body {
   color: var(--text-muted);
 }
 
+.banner-line {
+  display: block;
+}
+
+.banner-line + .banner-line {
+  margin-top: 3px;
+}
+
 .banner-actions {
   display: flex;
   flex-wrap: wrap;
@@ -901,6 +909,24 @@ body {
   font-size: 12px;
   line-height: 1.45;
   color: var(--text-muted);
+}
+
+/* Flex row so the button sizes to its label instead of stretching to the
+   width of the storage block. */
+.storage-actions {
+  display: flex;
+  gap: var(--s2);
+}
+
+.storage-notices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin: 0;
+  padding-left: var(--s4);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
 }
 
 /* ============================================================== dialog == */

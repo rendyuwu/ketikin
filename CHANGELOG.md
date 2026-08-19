@@ -28,16 +28,18 @@ accept clipboard paste.
   explains why, so the window can never be hidden with no way to restore or quit it. Saved
   preferences are left intact.
 - **Global hotkeys** to start and stop typing without focusing the Ketikin window. Defaults are
-  `Ctrl+Alt+T` to start and `Ctrl+Alt+X` to stop, with `Cmd` in place of `Ctrl` on macOS.
+  `Ctrl+Alt+T` to start and `Ctrl+Alt+X` to stop, shown as `⌘+Alt+T` and `⌘+Alt+X` on macOS.
 - **Auto-update** against GitHub Releases. Updates are downloaded, verified against a
   minisign signature, installed, and applied on restart. Can be disabled in Settings. On Linux,
   in-place self-installation works only for the AppImage; `.deb` and `.rpm` installations are
   notified of a new version and given a download link instead.
 - **Resilient storage** with a fallback chain: the OS application-data directory, then `%APPDATA%`
   and `%LOCALAPPDATA%` on Windows, then a `data` folder next to the executable, then the system
-  temp directory. Writes are atomic. If no location is writable the app continues with in-memory
-  data and shows a warning banner. This is what allows Ketikin to run on Windows Server, RDP, and
-  roaming-profile setups where the user profile may be unavailable or read-only.
+  temp directory. Writes are atomic, so an interrupted save leaves the previous file intact. If no
+  location is writable the app continues with in-memory data and shows a warning banner. Because
+  the first Windows candidate already sits inside `%APPDATA%`, the recovery that matters on
+  Windows Server, RDP, and roaming-profile setups comes from `%LOCALAPPDATA%`, the folder beside
+  the executable, and temp — the cases where the roaming profile is unavailable or read-only.
 - **Builds for Windows x64** (NSIS `.exe` supporting per-machine and per-user installs, plus
   `.msi`), **Linux x64** (`.AppImage`, `.deb`, and `.rpm`), and **macOS** on both Intel x64 and
   Apple Silicon arm64 (`.dmg`).

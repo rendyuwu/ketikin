@@ -5,8 +5,8 @@ import { HotkeyInput } from "../components/HotkeyInput";
 import { NumberInput } from "../components/NumberInput";
 import { Toggle } from "../components/Toggle";
 import type { UseUpdater } from "../hooks/useUpdater";
-import { errorMessage, validateHotkey } from "../lib/api";
-import { describeStorage, isStorageDegraded } from "../lib/format";
+import { errorMessage, openDataFolder, validateHotkey } from "../lib/api";
+import { describeStorage } from "../lib/format";
 import {
   COUNTDOWN_MAX,
   COUNTDOWN_MIN,
@@ -55,17 +55,43 @@ export function SettingsPanel({
   const [validationErrors, setValidationErrors] = useState<
     Record<Which, string | null>
   >({ start: null, stop: null });
+  const [openFolderError, setOpenFolderError] = useState<string | null>(null);
+
+  function openFolder() {
+    setOpenFolderError(null);
+    openDataFolder().catch((err: unknown) => setOpenFolderError(errorMessage(err)));
+  }
+
+  /**
+   * `validate_hotkey` is per-field, so it can't see that Start and Stop have
+   * been set to the same chord. `save_settings` does reject it — but only after
+   * the debounce, and the rejected value stays in the pending settings, so
+   * every subsequent save fails too and the user is stuck behind a recurring
+   * error banner. Catching it here keeps the bad value from being committed.
+   */
+  function commitHotkey(which: Which, accelerator: string): boolean {
+    const other = which === "start" ? settings.stopHotkey : settings.startHotkey;
+    if (accelerator === other) {
+      setValidationErrors((prev) => ({
+        ...prev,
+        [which]: "Start and stop must use different shortcuts.",
+      }));
+      return false;
+    }
+    onChange(
+      which === "start"
+        ? { startHotkey: accelerator }
+        : { stopHotkey: accelerator },
+    );
+    return true;
+  }
 
   async function captureHotkey(which: Which, accelerator: string) {
     setValidationErrors((prev) => ({ ...prev, [which]: null }));
     onClearHotkeyError(which);
     try {
       await validateHotkey(accelerator);
-      onChange(
-        which === "start"
-          ? { startHotkey: accelerator }
-          : { stopHotkey: accelerator },
-      );
+      commitHotkey(which, accelerator);
     } catch (err) {
       setValidationErrors((prev) => ({ ...prev, [which]: errorMessage(err) }));
     }
@@ -74,14 +100,21 @@ export function SettingsPanel({
   function resetHotkey(which: Which) {
     setValidationErrors((prev) => ({ ...prev, [which]: null }));
     onClearHotkeyError(which);
-    onChange(
+    // The two defaults differ, but the *other* field may already hold this
+    // one's default, so resetting can conflict just like capturing can.
+    commitHotkey(
+      which,
       which === "start"
-        ? { startHotkey: DEFAULT_SETTINGS.startHotkey }
-        : { stopHotkey: DEFAULT_SETTINGS.stopHotkey },
+        ? DEFAULT_SETTINGS.startHotkey
+        : DEFAULT_SETTINGS.stopHotkey,
     );
   }
 
-  const degraded = storage ? isStorageDegraded(storage) : false;
+  const notices = storage?.notices ?? [];
+  // Styling only, inside a section the user chose to open — so notices count
+  // here even when they don't warrant a banner. This is "is there something to
+  // read", not "is this degraded".
+  const storageWarn = storage ? storage.degraded || notices.length > 0 : false;
   const updateInfo = updater.info;
 
   return (
@@ -265,7 +298,7 @@ export function SettingsPanel({
           ) : null}
 
           {storage ? (
-            <div className={degraded ? "storage storage--warn" : "storage"}>
+            <div className={storageWarn ? "storage storage--warn" : "storage"}>
               <code className="storage-path">{storage.path}</code>
               <p className="storage-note">{describeStorage(storage)}</p>
               {!storage.writable ? (
@@ -273,6 +306,39 @@ export function SettingsPanel({
               ) : null}
               {storage.error ? (
                 <p className="storage-note">{storage.error}</p>
+              ) : null}
+              {/* Always rendered, regardless of whether the startup banner was
+                  dismissed — this is where a user comes back to find them. */}
+              {notices.length > 0 ? (
+                <ul className="storage-notices">
+                  {notices.map((notice) => (
+                    <li key={notice}>{notice}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <div className="storage-actions">
+                {/* An addition, not a replacement: on a locked-down host the
+                    button is likelier to fail than the path is to be unreadable.
+                    Disabled only for in-memory storage, where no folder exists —
+                    the reason is already spelled out in the line above. */}
+                <button
+                  type="button"
+                  className="btn btn--small"
+                  disabled={storage.source === "memory"}
+                  onClick={openFolder}
+                >
+                  Open data folder
+                </button>
+              </div>
+              {/* The log lives one level down, in logs/. Without this, someone
+                  told "send me your log" opens the folder and sees only JSON. */}
+              <p className="storage-note">
+                Settings, templates, and a logs folder are stored here.
+              </p>
+              {openFolderError ? (
+                <p className="field-error" role="alert">
+                  {openFolderError}
+                </p>
               ) : null}
             </div>
           ) : null}

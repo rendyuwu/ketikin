@@ -36,7 +36,7 @@ pub struct Template {
 
 /// Read the stored list. Never fails; see [`Storage::read`].
 pub fn load(storage: &Storage) -> Vec<Template> {
-    storage.read(FILE)
+    storage.read(FILE, "empty")
 }
 
 /// Persist the whole list atomically.

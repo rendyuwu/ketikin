@@ -226,9 +226,60 @@ jobs:
     needs:
       - prepare
       - release
+    # `always()` is load-bearing. With `fail-fast: false` a single failed
+    # platform leaves the other three green and their assets already uploaded
+    # into the draft; the default `success()` gate would *skip* this job, so the
+    # maintainer would see three ticks and a plausible-looking draft with one
+    # platform silently missing from latest.json. Run regardless and fail loudly.
+    if: always()
     runs-on: ubuntu-22.04
     steps:
+      # Runs only on the bad path. The draft is deliberately left in place —
+      # deleting a release is the maintainer's call, not CI's.
+      - name: Fail if any platform build did not succeed
+        if: needs.prepare.result != 'success' || needs.release.result != 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          RELEASE_RESULT: ${{ needs.release.result }}
+        run: |
+          set -euo pipefail
+
+          if [ "$PREPARE_RESULT" != "success" ]; then
+            printf '::error::The prepare job did not succeed (%s), so no bundles were built. Nothing to publish.\n' \
+              "$PREPARE_RESULT" >&2
+            exit 1
+          fi
+
+          # Name the specific platforms rather than just "the matrix failed":
+          # `needs.release.result` is a single aggregate value, so ask the API
+          # which matrix legs actually went wrong.
+          failed="$(
+            gh api "repos/${REPO}/actions/runs/${RUN_ID}/jobs" --paginate \
+              --jq '.jobs[] | select(.name | startswith("release (")) | select(.conclusion != "success") | "\(.name): \(.conclusion // "still running")"' \
+              || true
+          )"
+
+          {
+            printf '::error::Release %s is INCOMPLETE — the platform matrix did not fully succeed (%s).\n' \
+              "$TAG" "$RELEASE_RESULT"
+            if [ -n "$failed" ]; then
+              printf 'Platforms that did not succeed:\n%s\n' "$failed"
+            fi
+            printf 'The draft release has been left in place with only the assets that did upload,\n'
+            printf 'and its latest.json is missing at least one platform key. DO NOT PUBLISH IT —\n'
+            printf 'clients on the missing platform would be stranded on the old version.\n'
+            printf 'Re-run the failed job(s), or delete the draft and re-run the whole workflow.\n'
+          } >&2
+
+          exit 1
+
       - name: Validate draft release and updater manifest
+        if: needs.prepare.result == 'success' && needs.release.result == 'success'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -272,7 +323,7 @@ jobs:
           done
 
           assets="$(jq '[.assets[].name]' <<<"$release")"
-          for suffix in .msi -setup.exe .AppImage .deb .dmg; do
+          for suffix in .msi -setup.exe .AppImage .deb .rpm .dmg; do
             jq -e --arg s "$suffix" 'any(.[]; endswith($s))' <<<"$assets" >/dev/null \
               || die "Draft ${TAG} has no asset ending in '${suffix}'."
           done
@@ -282,7 +333,7 @@ jobs:
             printf 'All four platform builds uploaded and `latest.json` validated:\n\n'
             printf -- '- version `%s`\n' "$manifest_version"
             printf -- '- signed entries for `windows-x86_64`, `linux-x86_64`, `darwin-x86_64`, `darwin-aarch64`\n'
-            printf -- '- installers present for Windows (.msi, -setup.exe), Linux (.AppImage, .deb) and macOS (.dmg)\n\n'
+            printf -- '- installers present for Windows (.msi, -setup.exe), Linux (.AppImage, .deb, .rpm) and macOS (.dmg)\n\n'
             printf '### Assets\n\n'
             jq -r '.[] | "- `" + . + "`"' <<<"$assets"
             printf '\n> **The release is still a draft and must be published manually.**\n'

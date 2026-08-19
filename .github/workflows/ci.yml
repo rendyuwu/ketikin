@@ -84,6 +84,17 @@ jobs:
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
 
+      # Not redundant with clippy. `--all-targets` above *compiles* the test
+      # targets, so a test can never rot into a compile error — but no assertion
+      # is ever evaluated until something actually runs them. The wire-format
+      # pins in updater.rs/typing.rs only earn their keep here.
+      #
+      # Plain `cargo test`, not `--all-targets`: the latter silently skips
+      # doctests, and this is the command CONTRIBUTING tells contributors to run.
+      - name: Test
+        working-directory: src-tauri
+        run: cargo test
+
   version-sync:
     name: version-sync
     runs-on: ubuntu-22.04

@@ -178,3 +178,47 @@ recovery is to remove the release and tag, fix the cause, and re-tag.
 If a published release turns out to be broken in a way that affects users, ship a patch release
 rather than trying to un-publish it. Once the updater has served a version, the only reliable fix
 is a newer version.
+
+## Triaging a user report
+
+**Ask for the `logs/` directory first.** Storage resolution and hotkey registration failures are
+logged and nothing else surfaces them, so without the log most reports cannot be diagnosed at all.
+
+The log lives in a `logs/` subdirectory of whatever storage directory the app resolved — the path
+Settings displays, plus `logs/`. Ask for the whole directory rather than `Ketikin.log` alone: it
+rotates at 1 MB keeping two dated files, so the evidence for a startup problem may already have
+rolled into `Ketikin_<timestamp>.log`. The cap means the whole directory is around 3 MB at worst,
+which is safe to ask someone to attach.
+
+Note that the rotation settings are deliberate. The logging plugin's defaults — roughly 40 KB,
+keeping one file — are small enough that a single long typing session rolls straight past them and
+discards the startup diagnostics that make the log worth having. If you ever touch the logging
+configuration, keep the size well above one session's worth of output.
+
+**When there is no log, ask for Settings > Storage instead.** Two situations produce no log file.
+In in-memory mode every storage candidate failed, so logging fell back to standard output, which a
+Windows release build discards. Separately — and this one is easy to misread as "the log is
+missing" — the data directory can be writable while the `logs/` subdirectory cannot be created,
+which is a real Windows ACL case because adding files and adding subdirectories are separately
+granted permissions. Data saves fine; no log is ever written. Settings > Storage states outright
+when file logging is unavailable, and carries the resolved path, the fallback source, the error,
+and any notices. A screenshot of that panel is the substitute for the log.
+
+**Do not use the banner as your signal.** It only fires for temp and in-memory, the two conditions
+that are always broken. Running from the folder beside the executable is a supported portable
+deployment and shows no banner, but it does carry notices in Settings > Storage — that the
+location may be shared with other users, and that the resolved directory can depend on elevation.
+So "no banner" does not mean "nothing to see"; always ask for the panel, not the banner.
+
+**`ketikin-startup-error.log`** is written into the resolved directory when startup fails before a
+window can exist — the case where there is no UI to show an error and, on Windows, no console
+either. Ask for it when the report is "nothing happens when I launch it". Treat its absence as
+uninformative rather than exculpatory: it can only be written if storage resolved.
+
+**Ask every time:** the exact version, the platform, and how they installed it. The install method
+matters more than it looks — on Linux it determines whether they can self-update at all, and on
+Windows it determines whether an elevation mismatch explains "nothing gets typed".
+
+**Ask whether they ran it elevated**, if the report involves missing settings or templates on
+Windows. An elevated and a non-elevated launch can resolve to different data directories on
+locked-down machines, which presents exactly as data loss and is not.

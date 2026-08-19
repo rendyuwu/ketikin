@@ -58,8 +58,14 @@ const STORAGE_DESCRIPTIONS: Record<StorageSource, string> = {
 export const describeStorage = (info: StorageInfo): string =>
   STORAGE_DESCRIPTIONS[info.source] ?? "Location unknown.";
 
-/** True when settings and templates are at risk of being lost. */
-export const isStorageDegraded = (info: StorageInfo): boolean =>
+/**
+ * True when the *location itself* puts settings and templates at risk of being
+ * lost. This is not the same question as `StorageInfo.degraded` and must not be
+ * used to gate the banner — it exists solely to gate the sentence "Settings and
+ * templates may not be saved reliably", which would be false for a reset
+ * templates file on a healthy appData path, and false for a portable install.
+ */
+export const isStorageUnreliable = (info: StorageInfo): boolean =>
   !info.writable || info.source === "temp" || info.source === "memory";
 
 const MODIFIER_LABELS: Record<string, string> = {
@@ -91,7 +97,17 @@ export function acceleratorFromEvent(event: KeyboardEvent): string | null {
   if (key === null) return null;
 
   const parts: string[] = [];
-  if (event.ctrlKey || event.metaKey) parts.push("CommandOrControl");
+  // The primary modifier is Cmd on macOS and Ctrl everywhere else, so the two
+  // physical keys map to different accelerators per platform. Collapsing both
+  // onto CommandOrControl would bind Super+K as Ctrl+K on Linux and silently
+  // drop the Ctrl from Ctrl+Cmd+T on macOS.
+  if (IS_MAC) {
+    if (event.metaKey) parts.push("CommandOrControl");
+    if (event.ctrlKey) parts.push("Control");
+  } else {
+    if (event.ctrlKey) parts.push("CommandOrControl");
+    if (event.metaKey) parts.push("Super");
+  }
   if (event.altKey) parts.push("Alt");
   if (event.shiftKey) parts.push("Shift");
   parts.push(key);

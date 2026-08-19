@@ -10,6 +10,7 @@ import type {
   Settings,
   StorageInfo,
   Template,
+  TrayStatus,
   TrayUnavailable,
   TypingDone,
   TypingState,
@@ -56,6 +57,14 @@ export const stopTyping = () => invoke<void>("stop_typing");
 export const typingStatus = () => invoke<TypingState>("typing_status");
 
 export const storageInfo = () => invoke<StorageInfo>("storage_info");
+
+export const openDataFolder = () => invoke<void>("open_data_folder");
+
+export const trayStatus = () => invoke<TrayStatus>("tray_status");
+
+export const suspendHotkeys = () => invoke<void>("suspend_hotkeys");
+
+export const resumeHotkeys = () => invoke<void>("resume_hotkeys");
 
 export const checkForUpdates = () =>
   invoke<UpdateInfo | null>("check_for_updates");

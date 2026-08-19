@@ -41,8 +41,10 @@ response times are best-effort — but reports are taken seriously and will not 
 Ketikin's entire purpose is to send synthetic keystrokes to the focused window, so that behaviour
 by itself is not a vulnerability. Reports along the lines of "Ketikin can type into another
 application" describe the feature. The same goes for the fact that templates are stored on disk in
-plaintext — that is documented behaviour, and the README advises against saving secrets as
-templates.
+plaintext — that is documented behaviour, and the README tells users not to save secrets as
+templates. Likewise, a template store that another user of a shared machine can read or modify is
+a consequence of where the operating system permits Ketikin to write; the README documents which
+locations can be shared, and Settings > Storage reports when the resolved one is.
 
 Things that *are* in scope include: bypassing update signature verification, getting Ketikin to
 execute or load untrusted code, writing outside its resolved storage directory, or leaking the

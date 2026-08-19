@@ -22,10 +22,14 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
+use tauri_plugin_log::{Target, TargetKind};
+use tauri_plugin_opener::OpenerExt;
 
+use hotkeys::HotkeyHandle;
 use settings::Settings;
 use storage::{Storage, StorageInfo};
 use templates::Template;
+use tray::TrayStatus;
 use typing::{TypingHandle, TypingState};
 use updater::UpdateInfo;
 
@@ -40,6 +44,15 @@ const FIRST_UPDATE_CHECK_DELAY: Duration = Duration::from_secs(5);
 /// Gap between background update checks.
 const UPDATE_POLL_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
+/// Cap per log file, before rotation.
+///
+/// Set explicitly rather than inherited: the plugin defaults to 40 KB with
+/// `KeepOne`, which a single typing session rolls straight past — discarding
+/// the startup storage-resolution and hotkey-registration diagnostics, which
+/// are log-only and are exactly what a bug report needs. 1 MB across three
+/// files stays small enough to attach to an issue.
+const LOG_MAX_FILE_SIZE: u128 = 1024 * 1024;
+
 /// Everything the commands share.
 ///
 /// All locks are plain [`std::sync::Mutex`] and are held for as short a span as
@@ -49,6 +62,8 @@ pub struct AppState {
     pub settings: Mutex<Settings>,
     pub templates: Mutex<Vec<Template>>,
     pub typing: TypingHandle,
+    /// Which accelerators are actually bound right now.
+    pub hotkeys: HotkeyHandle,
     /// The update resolved by the last successful check, so `install_update`
     /// does not have to ask the endpoint a second time.
     pub pending_update: Mutex<Option<tauri_plugin_updater::Update>>,
@@ -61,6 +76,8 @@ pub struct AppState {
     /// rather than hiding a window with no tray to restore it from
     /// (unrecoverable without killing the process).
     tray_available: AtomicBool,
+    /// Why the tray is unavailable, for `tray_status`.
+    tray_message: Mutex<Option<String>>,
 }
 
 impl AppState {
@@ -74,6 +91,24 @@ impl AppState {
 
     fn set_tray_available(&self, available: bool) {
         self.tray_available.store(available, Ordering::Relaxed);
+    }
+
+    fn tray_status(&self) -> TrayStatus {
+        let available = self.is_tray_available();
+
+        TrayStatus {
+            // Structurally guaranteed: the frontend renders this verbatim, so
+            // `available: false` must never arrive without an explanation. The
+            // fallback covers only the unreachable pre-setup window.
+            message: (!available).then(|| {
+                lock(&self.tray_message).clone().unwrap_or_else(|| {
+                    "The system tray is unavailable, so Ketikin cannot hide to it. Closing the \
+                     window will exit the app."
+                        .to_string()
+                })
+            }),
+            available,
+        }
     }
 
     fn is_tray_available(&self) -> bool {
@@ -126,11 +161,18 @@ fn get_settings(state: State<'_, AppState>) -> Settings {
     lock(&state.settings).clone()
 }
 
-/// Persist settings, then re-apply everything derived from them.
+/// Apply settings, then persist whatever actually took effect.
 ///
-/// Hotkey registration failures do **not** fail this command: the settings are
-/// already on disk, and the specific accelerator that could not be claimed is
-/// reported on the `hotkey://error` event instead (see [`hotkeys`]).
+/// Order matters. Hotkeys are bound **before** anything is written to disk, and
+/// [`hotkeys::apply`] returns the accelerators that are genuinely in force: if
+/// the user's new shortcut is refused by the OS, the previous one is restored
+/// and it is the previous one that gets persisted. Stored settings therefore
+/// never contain a shortcut that is not really bound, and a restart recovers
+/// instead of repeating the failure.
+///
+/// Registration failures do not fail this command — the rest of the settings
+/// still save. The specific accelerator that could not be claimed is reported
+/// on the `hotkey://error` event (see [`hotkeys`]).
 #[tauri::command]
 fn save_settings(
     settings: Settings,
@@ -139,14 +181,17 @@ fn save_settings(
 ) -> Result<Settings, String> {
     let mut settings = settings;
     settings.normalize();
+    settings.validate()?;
 
-    settings.save(&state.storage)?;
-    *lock(&state.settings) = settings.clone();
+    let previous = lock(&state.settings).clone();
+    let effective = hotkeys::apply(&app, &previous, &settings);
 
-    apply_window_settings(&app, &settings);
-    hotkeys::apply(&app, &settings);
+    effective.save(&state.storage)?;
+    *lock(&state.settings) = effective.clone();
 
-    Ok(settings)
+    apply_window_settings(&app, &effective);
+
+    Ok(effective)
 }
 
 #[tauri::command]
@@ -254,6 +299,65 @@ fn validate_hotkey(accelerator: String) -> Result<(), String> {
     hotkeys::validate(&accelerator).map_err(Into::into)
 }
 
+/// Pull-based counterpart to `tray://unavailable`, for a frontend that mounted
+/// after the event fired. Mirrors the `storage_info` pattern.
+#[tauri::command]
+fn tray_status(state: State<'_, AppState>) -> TrayStatus {
+    state.tray_status()
+}
+
+/// Reveal the resolved data directory in the system file manager.
+///
+/// Triage for any Ketikin bug report ends at `<data dir>/logs/`, and the data
+/// directory is exactly the thing that moves on the locked-down machines where
+/// problems happen — so asking someone to transcribe a path out of a settings
+/// pane is where those reports die.
+///
+/// The path is read from the same [`Storage`] every other command uses rather
+/// than recomputed. A second derivation would be correct right up until the
+/// fallback chain picked something unexpected, which is precisely when it
+/// matters.
+#[tauri::command]
+fn open_data_folder(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let Some(dir) = state.storage.dir() else {
+        return Err(
+            "Ketikin could not find anywhere writable to store data, so it is keeping \
+                    settings in memory only and there is no folder to open."
+                .to_string(),
+        );
+    };
+    let path = dir.display().to_string();
+
+    // A minimal or headless Linux desktop may have no file manager at all.
+    // Report that plainly — the path is still visible in Settings, so a clear
+    // failure leaves the user no worse off, but a silent one would.
+    app.opener()
+        .open_path(&path, None::<&str>)
+        .map_err(|err| format!("could not open {path}: {err}"))
+}
+
+/// Release the global grabs while the user captures a replacement shortcut.
+///
+/// Without this, pressing the current start hotkey into a capture field fires
+/// a real typing run into the settings panel instead of being read as input.
+/// The frontend calls this on capture focus.
+#[tauri::command]
+fn suspend_hotkeys(app: AppHandle) -> Result<(), String> {
+    hotkeys::suspend(&app);
+    Ok(())
+}
+
+/// Re-arm the global grabs. Idempotent, and safe when nothing was suspended.
+///
+/// The frontend calls this on capture blur, but the backend also calls it on
+/// window blur and on close, and a `save_settings` expires any suspend — a
+/// leaked suspend would silently disable both hotkeys until restart.
+#[tauri::command]
+fn resume_hotkeys(app: AppHandle) -> Result<(), String> {
+    hotkeys::resume(&app);
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------------------
@@ -298,6 +402,10 @@ fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
 
     match event {
         WindowEvent::CloseRequested { api, .. } => {
+            // A suspend must not outlive the panel that asked for it, or both
+            // hotkeys stay dead until restart.
+            hotkeys::resume(app);
+
             if close_to_tray(app) {
                 api.prevent_close();
                 if let Err(err) = window.hide() {
@@ -305,6 +413,9 @@ fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
                 }
             }
         }
+        // Same safety net: if the user clicks away mid-capture, the frontend's
+        // blur handler may never run.
+        WindowEvent::Focused(false) => hotkeys::resume(app),
         // There is no portable "about to minimize" hook, so minimize-to-tray is
         // implemented after the fact: the window minimizes normally and is then
         // hidden. On Windows and macOS that means a brief minimize animation
@@ -343,18 +454,26 @@ fn spawn_update_poller(app: AppHandle) {
     });
 }
 
-fn setup(app: &AppHandle) {
-    // Resolve the data directory exactly once, probing each candidate with a
-    // real write. Everything downstream just asks `Storage`.
-    let storage = Storage::resolve(Storage::candidates(app));
-    let info = storage.info();
-    let degraded = storage.is_degraded();
+/// Load persisted state, then snapshot storage — in that order.
+///
+/// The ordering is load-bearing and easy to break by tidying. A corrupt file
+/// only records its notice at the moment it is *read*, so snapshotting storage
+/// before the loads would report a clean state, `degraded` would be false, and
+/// a silent template reset would never reach the banner. Extracted from
+/// [`setup`] so a test can hold the ordering in place without an `AppHandle`.
+fn load_state(storage: &Storage) -> (Settings, Vec<Template>, StorageInfo) {
+    let settings = Settings::load(storage);
+    let templates = templates::load(storage);
 
-    let settings = Settings::load(&storage);
-    let saved_templates = templates::load(&storage);
+    (settings, templates, storage.info())
+}
+
+fn setup(app: &AppHandle, storage: Storage) {
+    let (settings, saved_templates, info) = load_state(&storage);
+    let degraded = info.degraded;
 
     log::info!(
-        "ketikin {} starting — data directory: {} (source: {}, writable: {}), {} template(s)",
+        "ketikin {} starting — data directory: {} (source: {}, writable: {}), {} template(s), {} notice(s)",
         app.package_info().version,
         if info.path.is_empty() {
             "<none>"
@@ -363,7 +482,8 @@ fn setup(app: &AppHandle) {
         },
         info.source,
         info.writable,
-        saved_templates.len()
+        saved_templates.len(),
+        info.notices.len()
     );
 
     app.manage(AppState {
@@ -371,9 +491,11 @@ fn setup(app: &AppHandle) {
         settings: Mutex::new(settings.clone()),
         templates: Mutex::new(saved_templates),
         typing: TypingHandle::default(),
+        hotkeys: HotkeyHandle::default(),
         pending_update: Mutex::new(None),
         quitting: AtomicBool::new(false),
         tray_available: AtomicBool::new(false),
+        tray_message: Mutex::new(None),
     });
 
     // A tray failure disables close-to-tray and minimize-to-tray for this run;
@@ -388,12 +510,21 @@ fn setup(app: &AppHandle) {
         Err(err) => {
             let message = tray::describe_failure(&err);
             log::warn!("tray: {message}");
+            if let Some(state) = app.try_state::<AppState>() {
+                *lock(&state.tray_message) = Some(message.clone());
+            }
             Some(message)
         }
     };
 
-    hotkeys::apply(app, &settings);
-    apply_window_settings(app, &settings);
+    // At startup there is nothing bound yet and no previous value to fall back
+    // to, so `previous` and `desired` are the same: a refused accelerator is
+    // reported but nothing can be destroyed.
+    let effective = hotkeys::apply(app, &settings, &settings);
+    if let Some(state) = app.try_state::<AppState>() {
+        *lock(&state.settings) = effective.clone();
+    }
+    apply_window_settings(app, &effective);
 
     // Both startup notices are delayed for the same reason: `emit` does not
     // buffer, so firing now would land before the WebView attaches a listener.
@@ -416,12 +547,69 @@ fn setup(app: &AppHandle) {
     spawn_update_poller(app.clone());
 }
 
+/// Decide where the log plugin may write.
+///
+/// `TargetKind::LogDir` is deliberately never used. It hardcodes
+/// `%LOCALAPPDATA%\<identifier>\logs` on Windows — ignoring the storage
+/// fallback chain entirely — and propagates its `app_log_dir()`,
+/// `create_dir_all`, and file-open failures straight out of the plugin's setup
+/// closure. That closure runs during `tauri::Builder::build()`, *before* our
+/// own setup, so on a session host where `%LOCALAPPDATA%` is ACL-denied or
+/// redirected to an unavailable path it aborts the whole app before storage
+/// resolution executes a single instruction. With `windows_subsystem =
+/// "windows"` in release the resulting message goes to a stderr that does not
+/// exist: no window, no error, silent exit 1.
+///
+/// `TargetKind::Folder` is fallible for the same reasons, so it is only
+/// attached to a directory that has just passed a real write probe. That turns
+/// a deterministic property of the environment into a TOCTOU window of
+/// microseconds. Stdout is infallible and always present.
+fn log_targets(storage: &Storage) -> Vec<Target> {
+    let mut targets = vec![Target::new(TargetKind::Stdout)];
+
+    match storage.log_dir() {
+        Some(path) => targets.push(Target::new(TargetKind::Folder {
+            path: path.to_path_buf(),
+            file_name: None,
+        })),
+        None => log::warn!("logging to stdout only; no writable log directory"),
+    }
+
+    targets
+}
+
+/// Last-resort record of a startup abort.
+///
+/// Under `windows_subsystem = "windows"` there is no stderr and no window yet,
+/// so a fatal error would otherwise be completely invisible. The storage
+/// directory has already passed a write probe by this point, which makes it the
+/// one place we know we can leave a breadcrumb.
+fn record_fatal_error(path: Option<&std::path::Path>, message: &str) {
+    let Some(path) = path else {
+        return;
+    };
+    let stamp = chrono::Utc::now().to_rfc3339();
+    let _ = std::fs::write(path, format!("[{stamp}] {message}\n"));
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Storage is resolved before `tauri::Builder` exists, for two reasons: the
+    // log plugin's file target has to point at the result, and anything that
+    // fails inside `Builder` aborts startup before our setup hook could react.
+    let storage = Storage::resolve(Storage::candidates());
+    let targets = log_targets(&storage);
+    let fatal_path = storage
+        .dir()
+        .map(|dir| dir.join("ketikin-startup-error.log"));
+
     let result = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
+                .targets(targets)
+                .max_file_size(LOG_MAX_FILE_SIZE)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(2))
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
@@ -444,17 +632,23 @@ pub fn run() {
             open_release_notes,
             app_version,
             validate_hotkey,
+            tray_status,
+            suspend_hotkeys,
+            resume_hotkeys,
+            open_data_folder,
         ])
-        .setup(|app| {
-            setup(app.handle());
+        .setup(move |app| {
+            setup(app.handle(), storage);
             Ok(())
         })
         .on_window_event(handle_window_event)
         .run(tauri::generate_context!());
 
     if let Err(err) = result {
-        log::error!("ketikin could not start: {err}");
-        eprintln!("ketikin could not start: {err}");
+        let message = format!("ketikin could not start: {err}");
+        log::error!("{message}");
+        eprintln!("{message}");
+        record_fatal_error(fatal_path.as_deref(), &message);
         std::process::exit(1);
     }
 }
@@ -468,6 +662,49 @@ mod tests {
     /// Tauri's shared runtime actually start the timer driver. If that ever
     /// stops holding, `spawn_update_poller` would panic at runtime rather than
     /// fail to build — so pin the behaviour down here.
+    /// The emission gate, not just the verdict.
+    ///
+    /// `setup` decides whether to fire `storage://warning` from the snapshot
+    /// `load_state` returns. If the snapshot were taken before the loads, a
+    /// corrupt-file reset would be invisible to it — the notice would exist on
+    /// `Storage` but the already-captured `StorageInfo` would say `degraded:
+    /// false` and no banner would ever fire.
+    #[test]
+    fn a_corrupt_file_reaches_the_startup_warning_gate() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().join("data");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        std::fs::write(dir.join("templates.json"), b"{ not json").expect("write");
+
+        let storage = Storage::resolve(vec![("appData", dir)]);
+        // Healthy appData: nothing about the *location* is wrong.
+        assert!(storage.info().writable);
+
+        let (_settings, templates, info) = load_state(&storage);
+
+        assert!(
+            templates.is_empty(),
+            "the corrupt file should reset to empty"
+        );
+        assert!(
+            info.degraded,
+            "the snapshot setup emits from must already see the reset"
+        );
+        assert!(info.notices.iter().any(|n| n.contains("templates.json")));
+    }
+
+    #[test]
+    fn a_clean_start_does_not_trip_the_startup_warning_gate() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let storage = Storage::resolve(vec![("appData", tmp.path().to_path_buf())]);
+
+        let (_settings, templates, info) = load_state(&storage);
+
+        assert!(templates.is_empty());
+        assert!(!info.degraded, "a first run must not raise the banner");
+        assert!(info.notices.is_empty());
+    }
+
     #[test]
     fn hide_to_tray_needs_both_the_setting_and_a_working_tray() {
         assert!(hide_to_tray_allowed(true, true, false));

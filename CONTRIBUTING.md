@@ -86,26 +86,38 @@ before making a change that spans both sides.
 
 ## Running checks
 
-Run these before pushing. CI runs the same set, so catching failures locally saves a round trip.
+These are exactly what CI enforces. Run them before pushing and CI should not surprise you.
 
 **Frontend**
 
 ```bash
 npm run typecheck
+npm run build
 ```
+
+`npm run build` matters because it type-checks with the full project references and catches
+failures that `typecheck` alone does not.
 
 **Backend** — run from inside `src-tauri/`:
 
 ```bash
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
 cargo check
-cargo clippy
-cargo fmt
+cargo test
 ```
 
-`cargo fmt` rewrites files in place; use `cargo fmt --check` if you only want to know whether
-anything is misformatted. Please keep `cargo clippy` clean rather than adding `#[allow(...)]`
-attributes, unless the lint is genuinely wrong for the situation — in which case a one-line comment
-explaining why is appreciated.
+Two of these are stricter than the bare commands you might reach for by habit, and the difference
+is where contributors get caught out:
+
+- **`cargo fmt --check`** reports misformatting and fails; plain `cargo fmt` silently rewrites your
+  files instead. CI uses the `--check` form, so run `cargo fmt` to fix and `cargo fmt --check` to
+  confirm.
+- **`cargo clippy --all-targets -- -D warnings`** turns every lint into an error and covers tests
+  and examples, not just the library. A plain `cargo clippy` can look clean while CI fails.
+
+Please fix clippy findings rather than adding `#[allow(...)]`, unless the lint is genuinely wrong
+for the situation — in which case a one-line comment explaining why is appreciated.
 
 ## Commit conventions
 

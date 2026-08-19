@@ -92,10 +92,26 @@ impl Settings {
         }
     }
 
+    /// Reject combinations that are individually valid but nonsense together.
+    ///
+    /// Only one rule so far: the two hotkeys cannot be the same accelerator.
+    /// Without this the second registration fails with `AlreadyRegistered` and
+    /// the generic hotkey error blames "another application", sending the user
+    /// hunting for a conflict that is Ketikin itself.
+    pub fn validate(&self) -> Result<(), AppError> {
+        if self.hotkeys_enabled && self.start_hotkey.eq_ignore_ascii_case(&self.stop_hotkey) {
+            return Err(AppError::Invalid(format!(
+                "the start and stop shortcuts are both set to {} — give them different keys",
+                self.start_hotkey
+            )));
+        }
+        Ok(())
+    }
+
     /// Read settings from disk, normalized. Never fails: a missing or corrupt
     /// file yields defaults (see [`Storage::read`]).
     pub fn load(storage: &Storage) -> Self {
-        let mut settings: Settings = storage.read(FILE);
+        let mut settings: Settings = storage.read(FILE, "the built-in defaults");
         settings.normalize();
         settings
     }
@@ -194,6 +210,58 @@ mod tests {
         assert!(json.contains("\"minimizeToTray\""));
         assert!(json.contains("\"autoCheckUpdates\""));
         assert!(!json.contains("typing_delay_ms"));
+    }
+
+    #[test]
+    fn validate_rejects_two_slots_sharing_one_accelerator() {
+        let settings = Settings {
+            start_hotkey: "Alt+K".to_string(),
+            stop_hotkey: "Alt+K".to_string(),
+            ..Settings::default()
+        };
+
+        let err = settings.validate().expect_err("must reject");
+        let message = err.to_string();
+
+        // The message has to name Ketikin's own conflict; the generic
+        // registration error blames "another application" and sends the user
+        // hunting for a program that isn't there.
+        assert!(message.contains("Alt+K"));
+        assert!(message.contains("start and stop"));
+        assert!(!message.contains("another application"));
+    }
+
+    #[test]
+    fn validate_ignores_case_when_comparing_accelerators() {
+        let settings = Settings {
+            start_hotkey: "Alt+K".to_string(),
+            stop_hotkey: "alt+k".to_string(),
+            ..Settings::default()
+        };
+
+        assert!(settings.validate().is_err());
+    }
+
+    #[test]
+    fn validate_allows_a_clash_while_hotkeys_are_disabled() {
+        // Nothing is bound, so nothing can conflict.
+        let settings = Settings {
+            hotkeys_enabled: false,
+            start_hotkey: "Alt+K".to_string(),
+            stop_hotkey: "Alt+K".to_string(),
+            ..Settings::default()
+        };
+
+        settings
+            .validate()
+            .expect("disabled hotkeys cannot conflict");
+    }
+
+    #[test]
+    fn validate_accepts_the_defaults() {
+        Settings::default()
+            .validate()
+            .expect("defaults must be valid");
     }
 
     #[test]
