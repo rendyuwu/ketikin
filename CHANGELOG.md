@@ -16,16 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   actually worked belonged to the copy you could not see, and both copies wrote the same settings
   and templates files, so a template saved in one window vanished when the other saved. A second
   launch now brings the existing window back and exits.
+  ([#13](https://github.com/rendyuwu/ketikin/issues/13))
 - **Typing into a template no longer throws you back into the name field.** Every character typed
   into the content box moved the cursor back up to **Template name**, so the first character
   landed in the content and the rest of what you typed was appended to the name. The name field is
   focused when the form opens, and only then.
+  ([#2](https://github.com/rendyuwu/ketikin/issues/2))
 
 ### Changed
 
 - `docs/RELEASING.md` now describes the `target_commitish` release failure — what the error means,
   that it discards four platform builds that had already succeeded, and that CI cannot catch it —
   and no longer assumes a failed release left a GitHub release behind to delete.
+  ([#1](https://github.com/rendyuwu/ketikin/issues/1))
 
 ## [0.1.0] - 2026-08-19
 
