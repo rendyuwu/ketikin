@@ -41,6 +41,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The Type panel now asks how careful you want to be, not how many milliseconds.** The bottom half
+  of the panel was four stacked rows doing one job — a meta line, a delay field, the button, and a
+  standing footnote — and the delay was stated twice in two of them. It is now one block. **Delay
+  (ms)** has become **Cadence**: a slider with three named stops, **Careful**, **Normal** and
+  **Fast**, because nobody knows what 25 ms feels like until they have ruined one paste into a
+  production console. The millisecond field is still there beside it and still editable, and it is
+  still the way to reach any value in the full range; the backend remains the authority on what is
+  in range. The estimate of how long the run will take is now the largest thing in the footer rather
+  than 12px grey text at the end of a sentence, since it is the only question you actually have
+  before pressing Start. The text box has lost its border and its grey fill — what you paste is the
+  content of this screen, not an entry in a form — and its empty state says **Paste what Ketikin
+  should type.** on the line the cursor is on. The permanent **Click into the target window during
+  the countdown.** footnote is gone; it appears during the countdown, which is the only time it is
+  possible to act on. The keyboard shortcut for **Start typing** and **Stop** is now drawn inside
+  each button, and is omitted when global hotkeys are switched off or the shortcut could not be
+  registered, so it never advertises a key that does nothing.
+  ([#8](https://github.com/rendyuwu/ketikin/issues/8))
 - **Brass instead of blue, and the app now brings its own typeface.** Three different blues used to
   ship in one product, and blue is the most default accent in software. The accent is now a warm
   brass, and it is spent in exactly four places — the **Start typing** button, the active tab's

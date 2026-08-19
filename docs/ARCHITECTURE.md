@@ -124,8 +124,10 @@ which is why it reports when file logging is unavailable.
 
 The UI is three panels:
 
-- **Type** — the text box, delay control, countdown display, progress readout, and Start / Stop.
-  Subscribes to the typing engine's progress events.
+- **Type** — the compose area, the cadence control, countdown display, progress readout, and
+  Start / Stop. Subscribes to the typing engine's progress events. The cadence slider and the
+  numeric delay field are two views of the same setting: both write through `settings.update`, and
+  the slider's discrete stops mean a whole drag lands inside one 400 ms debounce window.
 - **Templates** — list, create, edit, and delete templates; clicking one loads it into the Type
   panel's text box.
 - **Settings** — every setting from the settings module, plus the read-only data location.
