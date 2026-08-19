@@ -35,6 +35,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The controls no longer look a decade older than the app.** The boxed segmented tab strip is gone
+  and so is the wordmark that repeated what the titlebar already said: the tabs are plain text with
+  an underline under the active one, sharing a single row with the typing status, which gives about
+  40px of vertical space back to a 700px-tall window. The **Newline handling** and **Theme**
+  dropdowns are drawn like every other control instead of arriving with the platform's own chrome and
+  font metrics, and they size to their options rather than stretching across the panel — the native
+  popup they open is unchanged. Switches are smaller and flatter, scrollbars are thin and quiet in
+  every panel, `TYPING` / `WINDOW` / `HOTKEYS` each head a hairline rule instead of floating above
+  their group, and the delay and countdown fields carry their unit inside the field so their labels
+  are simply **Delay** and **Countdown**. The standing "Changes save automatically." line has been
+  dropped, since the **Saved** flash says the same thing at the moment it is true. Tab keyboard
+  navigation is exactly as capable as before.
+  ([#6](https://github.com/rendyuwu/ketikin/issues/6))
 - **Spacing and text sizes now group the interface instead of flattening it.** Every distance on
   screen used to be the same 12px, so nothing read as belonging together, and six text sizes were
   crowded into a 4px range where two of them were indistinguishable. There are now three text sizes

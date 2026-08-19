@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Field } from "../components/Field";
 import { HotkeyInput } from "../components/HotkeyInput";
 import { NumberInput } from "../components/NumberInput";
+import { Select } from "../components/Select";
 import { Toggle } from "../components/Toggle";
 import type { UseUpdater } from "../hooks/useUpdater";
 import { errorMessage, openDataFolder, validateHotkey } from "../lib/api";
@@ -132,8 +133,10 @@ export function SettingsPanel({
 
   return (
     <div className="panel settings-panel">
+      {/* "Changes save automatically." used to sit here as a standing claim.
+          The flash says the same thing at the moment it is true, which is the
+          only moment it is worth a row. */}
       <div className="settings-status" aria-live="polite">
-        <span className="meta">Changes save automatically.</span>
         {justSaved ? <span className="saved-flash">Saved</span> : null}
       </div>
 
@@ -141,22 +144,26 @@ export function SettingsPanel({
         <section className="section">
           <h2 className="section-title">Typing</h2>
 
-          <Field label="Delay (ms)" htmlFor="settings-delay">
+          <Field label="Delay" htmlFor="settings-delay">
             <NumberInput
               id="settings-delay"
               value={settings.typingDelayMs}
               min={DELAY_MIN}
               max={DELAY_MAX}
+              suffix="ms"
+              suffixLabel="milliseconds"
               onCommit={(typingDelayMs) => onChange({ typingDelayMs })}
             />
           </Field>
 
-          <Field label="Countdown (seconds)" htmlFor="settings-countdown">
+          <Field label="Countdown" htmlFor="settings-countdown">
             <NumberInput
               id="settings-countdown"
               value={settings.startDelaySecs}
               min={COUNTDOWN_MIN}
               max={COUNTDOWN_MAX}
+              suffix="s"
+              suffixLabel="seconds"
               onCommit={(startDelaySecs) => onChange({ startDelaySecs })}
             />
           </Field>
@@ -166,18 +173,15 @@ export function SettingsPanel({
             htmlFor="settings-newline"
             hint={NEWLINE_HELP[settings.newlineMode]}
           >
-            <select
+            <Select
               id="settings-newline"
-              className="input select"
               value={settings.newlineMode}
-              onChange={(e) =>
-                onChange({ newlineMode: e.target.value as NewlineMode })
-              }
+              onChange={(value) => onChange({ newlineMode: value as NewlineMode })}
             >
               <option value="enter">Press Enter</option>
               <option value="shiftEnter">Press Shift+Enter</option>
               <option value="skip">Skip line breaks</option>
-            </select>
+            </Select>
           </Field>
         </section>
 
@@ -185,16 +189,15 @@ export function SettingsPanel({
           <h2 className="section-title">Window</h2>
 
           <Field label="Theme" htmlFor="settings-theme">
-            <select
+            <Select
               id="settings-theme"
-              className="input select"
               value={settings.theme}
-              onChange={(e) => onChange({ theme: e.target.value as Theme })}
+              onChange={(value) => onChange({ theme: value as Theme })}
             >
               <option value="system">System</option>
               <option value="dark">Dark</option>
               <option value="light">Light</option>
-            </select>
+            </Select>
           </Field>
 
           <Toggle
