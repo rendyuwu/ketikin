@@ -13,6 +13,13 @@
 //!
 //! If none of the candidates work the app keeps running with purely in-memory
 //! state instead of failing to launch.
+//!
+//! Resolving this early has one cost: `log::set_logger` has not run yet, so
+//! every `log::` macro in here is a silent no-op. The diagnostics are therefore
+//! buffered on the [`Storage`] value and replayed by
+//! [`Storage::replay_diagnostics`] from `setup`, once the logger is live.
+//! Without that, "which candidate was rejected and why" — the single most
+//! useful thing in a locked-down-Windows bug report — never reaches the file.
 
 use std::fs;
 use std::io::Write;
@@ -32,6 +39,36 @@ pub const APP_DIR_NAME: &str = "com.rendyuwu.ketikin";
 
 /// Emitted once at startup when storage is degraded or carries notices.
 pub const EVENT_WARNING: &str = "storage://warning";
+
+/// Cap per log file, before rotation.
+///
+/// Set explicitly rather than inherited: the plugin defaults to 40 KB with
+/// `KeepOne`, which a single typing session rolls straight past — discarding
+/// the startup storage-resolution and hotkey-registration diagnostics, which
+/// are log-only and are exactly what a bug report needs. 1 MB across three
+/// files stays small enough to attach to an issue.
+///
+/// It lives here rather than next to the plugin builder because the log probe
+/// has to make the same rotation decision the plugin would, and two copies of
+/// this number would eventually disagree.
+pub const LOG_MAX_FILE_SIZE: u64 = 1024 * 1024;
+
+/// How many *rotated* log files to keep, excluding the active one.
+///
+/// Must match the `RotationStrategy::KeepSome` argument in `lib.rs`, for the
+/// same reason as [`LOG_MAX_FILE_SIZE`].
+pub const LOG_KEEP_FILES: usize = 2;
+
+/// Stem of the log file, before the per-user suffix and the `.log` extension.
+///
+/// Matches `productName` in `tauri.conf.json`, which is what the plugin falls
+/// back to when no file name is given. So the no-user case produces exactly the
+/// file every existing install already has, and `README.md`'s worked example
+/// only gains a suffix rather than changing shape.
+const LOG_FILE_BASE: &str = "Ketikin";
+
+/// Longest user-name fragment appended to [`LOG_FILE_BASE`].
+const MAX_LOG_USER_CHARS: usize = 32;
 
 /// Per-candidate ceiling on the writability probe.
 ///
@@ -99,6 +136,17 @@ pub struct Storage {
     /// `<dir>/logs`, but only once proven writable in its own right. `None`
     /// means file logging is off for this run.
     log_dir: Option<PathBuf>,
+    /// File-name stem handed to the log plugin, and the one the probe opened.
+    /// Derived once so the two can never disagree.
+    log_file: String,
+    /// Diagnostics recorded before a logger existed, in order.
+    ///
+    /// Drained exactly once by [`Storage::take_diagnostics`], which also stops
+    /// further buffering — everything after that point has a live logger and
+    /// goes straight to it.
+    diagnostics: Mutex<Vec<(log::Level, String)>>,
+    /// Whether [`Storage::record`] still buffers instead of logging.
+    buffering: AtomicBool,
     info: Mutex<StorageInfo>,
     /// Whether anything recorded so far justifies the startup banner.
     ///
@@ -145,16 +193,26 @@ impl Storage {
 
     /// Take the first candidate that is genuinely writable.
     ///
-    /// Every rejection is logged so a support request can be diagnosed from the
-    /// log file alone.
+    /// Every rejection is buffered so a support request can be diagnosed from
+    /// the log file alone once [`Storage::replay_diagnostics`] has run.
     pub fn resolve(candidates: Vec<(&'static str, PathBuf)>) -> Self {
+        let mut diagnostics: Vec<(log::Level, String)> = Vec::new();
         let mut failures: Vec<String> = Vec::new();
         let deadline = Instant::now() + PROBE_BUDGET;
+        let log_file = log_file_stem();
 
         for (source, dir) in candidates {
-            match probe_writable_bounded(&dir, remaining_timeout(deadline)) {
+            let probe_dir = dir.clone();
+            let probed = probe_bounded(remaining_timeout(deadline), move || {
+                probe_writable(&probe_dir)
+            });
+
+            match probed {
                 Ok(()) => {
-                    log::info!("storage: using {} (source: {source})", dir.display());
+                    diagnostics.push((
+                        log::Level::Info,
+                        format!("storage: using {} (source: {source})", dir.display()),
+                    ));
 
                     // Probe `<dir>/logs` separately rather than inferring it.
                     // On Windows, creating a *file* and creating a
@@ -165,10 +223,21 @@ impl Storage {
                     // can be created. Failing this must not disqualify an
                     // otherwise good data directory.
                     let logs = dir.join("logs");
-                    let log_dir = match probe_writable_bounded(&logs, remaining_timeout(deadline)) {
+                    let probe_logs = logs.clone();
+                    let probe_stem = log_file.clone();
+                    let probed_logs = probe_bounded(remaining_timeout(deadline), move || {
+                        probe_log_dir(&probe_logs, &probe_stem)
+                    });
+                    let log_dir = match probed_logs {
                         Ok(()) => Some(logs),
                         Err(err) => {
-                            log::warn!("storage: log directory {} unusable: {err}", logs.display());
+                            diagnostics.push((
+                                log::Level::Warn,
+                                format!(
+                                    "storage: log directory {} unusable: {err}",
+                                    logs.display()
+                                ),
+                            ));
                             None
                         }
                     };
@@ -186,6 +255,9 @@ impl Storage {
                         }),
                         dir: Some(dir),
                         log_dir,
+                        log_file,
+                        diagnostics: Mutex::new(diagnostics),
+                        buffering: AtomicBool::new(true),
                         alarming: AtomicBool::new(false),
                     };
                     storage.add_location_notices(source);
@@ -205,10 +277,13 @@ impl Storage {
                     return storage;
                 }
                 Err(err) => {
-                    log::warn!(
-                        "storage: {source} candidate {} rejected: {err}",
-                        dir.display()
-                    );
+                    diagnostics.push((
+                        log::Level::Warn,
+                        format!(
+                            "storage: {source} candidate {} rejected: {err}",
+                            dir.display()
+                        ),
+                    ));
                     failures.push(format!("{source} ({}): {err}", dir.display()));
                 }
             }
@@ -219,24 +294,63 @@ impl Storage {
         } else {
             format!("no writable data directory found — {}", failures.join("; "))
         };
-        log::error!("storage: {error}; falling back to in-memory state");
+        diagnostics.push((
+            log::Level::Error,
+            format!("storage: {error}; falling back to in-memory state"),
+        ));
 
-        Self {
+        let storage = Self {
             dir: None,
             log_dir: None,
+            log_file,
+            diagnostics: Mutex::new(diagnostics),
+            buffering: AtomicBool::new(true),
             alarming: AtomicBool::new(true),
             info: Mutex::new(StorageInfo {
                 path: String::new(),
                 source: "memory".to_string(),
                 writable: false,
                 error: Some(error),
-                notices: vec![
-                    "Ketikin could not find anywhere to save data, so settings and templates \
-                     will be lost when you close it."
-                        .to_string(),
-                ],
+                notices: Vec::new(),
                 degraded: true,
             }),
+        };
+        storage.push_notice(
+            "Ketikin could not find anywhere to save data, so settings and templates will be \
+             lost when you close it."
+                .to_string(),
+            true,
+        );
+
+        storage
+    }
+
+    /// Replay everything recorded before `log::set_logger` had been called.
+    ///
+    /// Call this from `setup`, before any other logging, so the log file reads
+    /// chronologically. Draining also switches [`Storage::record`] to logging
+    /// directly, so nothing accumulates for the rest of the run.
+    pub fn replay_diagnostics(&self) {
+        for (level, message) in self.take_diagnostics() {
+            log::log!(level, "{message}");
+        }
+    }
+
+    /// Drain the buffer and stop buffering. See [`Storage::replay_diagnostics`].
+    pub fn take_diagnostics(&self) -> Vec<(log::Level, String)> {
+        self.buffering.store(false, Ordering::Relaxed);
+        std::mem::take(&mut *crate::lock(&self.diagnostics))
+    }
+
+    /// Buffer a diagnostic while there is no logger, and log it once there is.
+    ///
+    /// Deliberately never does both: a message is emitted exactly once, either
+    /// by [`Storage::replay_diagnostics`] or here.
+    fn record(&self, level: log::Level, message: String) {
+        if self.buffering.load(Ordering::Relaxed) {
+            crate::lock(&self.diagnostics).push((level, message));
+        } else {
+            log::log!(level, "{message}");
         }
     }
 
@@ -265,6 +379,23 @@ impl Storage {
                      settings saved one way may not appear the other."
                         .to_string(),
                     false,
+                );
+            }
+            // The temp warning is genuinely different per platform, so it is
+            // written per platform rather than hedged into one sentence that is
+            // wrong everywhere. On Windows `std::env::temp_dir()` goes through
+            // `GetTempPath()`, which yields `%LOCALAPPDATA%\Temp` — per-user,
+            // and *inside* the `localAppDataEnv` candidate, so it is not the
+            // independent backstop the chain's shape suggests. On Linux and
+            // macOS `/tmp` really is a separate, machine-wide location.
+            "temp" if cfg!(windows) => {
+                self.push_notice(
+                    "Ketikin is saving to the temporary folder. On Windows that folder lives \
+                     inside your own user profile, so it is not shared with other users — but \
+                     it is not an independent fallback from that profile either, and Windows \
+                     can clear it, so your settings and templates may not survive a reboot."
+                        .to_string(),
+                    true,
                 );
             }
             "temp" => {
@@ -313,6 +444,24 @@ impl Storage {
         self.log_dir.as_deref()
     }
 
+    /// File-name stem for the log plugin's folder target, without `.log`.
+    ///
+    /// Per-user, because [`restrict_to_owner`] is a no-op on Windows: in a
+    /// shared location — a portable install beside the executable on a session
+    /// host — the directory stays writable by everyone while the *file* one
+    /// user created inherits an ACE that gives only its creator write access.
+    /// The plugin opens that file with `create(true).append(true)` from inside
+    /// its setup closure and `?`-propagates the failure out of
+    /// `tauri::Builder::build()`, so a second user launching would get no
+    /// window at all. A name per user means the collision cannot arise.
+    ///
+    /// This is the same value [`probe_log_dir`] opened. Deriving it once is the
+    /// point: a probe of a different file proves nothing about the one the
+    /// plugin will use.
+    pub fn log_file(&self) -> &str {
+        &self.log_file
+    }
+
     /// True when the startup banner is warranted.
     ///
     /// Delegates to [`Storage::info`] rather than recomputing, so the boolean
@@ -325,7 +474,7 @@ impl Storage {
     /// Record something the user should see. `alarming` decides whether it also
     /// raises the startup banner, or only appears in Settings > Storage.
     fn push_notice(&self, notice: String, alarming: bool) {
-        log::warn!("storage: {notice}");
+        self.record(log::Level::Warn, format!("storage: {notice}"));
         crate::lock(&self.info).notices.push(notice);
 
         if alarming {
@@ -420,19 +569,21 @@ fn remaining_timeout(deadline: Instant) -> Duration {
         .clamp(PROBE_MIN_TIMEOUT, PROBE_TIMEOUT)
 }
 
-/// Run [`probe_writable`] with a deadline.
+/// Run a filesystem probe with a deadline.
 ///
 /// The probe is uninterruptible once it is blocked in a filesystem call, so on
 /// timeout the worker thread is simply abandoned. It will finish on its own
 /// eventually; what matters is that startup does not wait for it.
-fn probe_writable_bounded(dir: &Path, timeout: Duration) -> Result<(), String> {
+fn probe_bounded(
+    timeout: Duration,
+    probe: impl FnOnce() -> std::io::Result<()> + Send + 'static,
+) -> Result<(), String> {
     let (tx, rx) = mpsc::channel();
-    let target = dir.to_path_buf();
 
     thread::Builder::new()
         .name("ketikin-storage-probe".to_string())
         .spawn(move || {
-            let _ = tx.send(probe_writable(&target).map_err(|err| err.to_string()));
+            let _ = tx.send(probe().map_err(|err| err.to_string()));
         })
         .map_err(|err| format!("could not start the probe thread: {err}"))?;
 
@@ -470,6 +621,148 @@ fn probe_writable(dir: &Path) -> std::io::Result<()> {
     fs::remove_file(&probe)?;
 
     Ok(())
+}
+
+/// Qualify `<dir>/logs` by performing the operations the log plugin performs.
+///
+/// A uniquely-named create-then-delete proves nothing here. `TargetKind::Folder`
+/// does three things that probe never touches, each `?`-propagated out of the
+/// plugin's setup closure and therefore out of `tauri::Builder::build()` —
+/// before our own `setup` hook exists to react, and under
+/// `windows_subsystem = "windows"` with no stderr and no window, so the process
+/// simply exits 1 in silence:
+///
+/// 1. `OpenOptions::new().create(true).append(true)` on a file that may already
+///    exist and may deny us — the ACL case [`Storage::log_file`] describes;
+/// 2. a rotation `fs::rename` once the file passes the size cap, with no retry,
+///    which Windows fails transiently under antivirus and indexer locks;
+/// 3. `fs::remove_file` of an old dated log.
+///
+/// So this does all three: it opens the real file and leaves it in place
+/// (deleting is not something the plugin does), and it performs the rotation and
+/// the pruning itself, using [`rename_with_retry`] where the plugin would use a
+/// bare rename. The plugin then finds a small file and a pruned directory and
+/// has no work left that can fail. Anything that still fails here disqualifies
+/// the log directory, which costs a log file — infinitely cheaper than costing
+/// the window.
+fn probe_log_dir(dir: &Path, stem: &str) -> std::io::Result<()> {
+    fs::create_dir_all(dir)?;
+    restrict_to_owner(dir);
+
+    let path = dir.join(format!("{stem}.log"));
+
+    if append_open(&path)? >= LOG_MAX_FILE_SIZE {
+        rotate_log(dir, stem, &path)?;
+        // Rotating renamed the file away, so open it again — both to leave the
+        // file the plugin expects sitting there and because that second open is
+        // one the plugin will also perform.
+        append_open(&path)?;
+    }
+    prune_rotated_logs(dir, stem, LOG_KEEP_FILES)
+}
+
+/// Open a log file exactly as the plugin does, and report its size.
+///
+/// The handle is dropped immediately: the point is to prove the call succeeds
+/// and to leave the file in place, not to hold it.
+fn append_open(path: &Path) -> std::io::Result<u64> {
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
+
+    file.metadata().map(|meta| meta.len())
+}
+
+/// Move an oversized log aside, under the name the plugin would have chosen.
+///
+/// Matching the plugin's `<stem>_<UTC timestamp>.log` shape is load-bearing:
+/// its own pruning only recognises files of that form, so a name of our own
+/// invention would accumulate forever.
+fn rotate_log(dir: &Path, stem: &str, path: &Path) -> std::io::Result<()> {
+    let stamp = chrono::Utc::now().format("%Y-%m-%d_%H-%M-%S");
+    let mut target = dir.join(format!("{stem}_{stamp}.log"));
+
+    // Two launches inside one second would otherwise silently overwrite the
+    // older archive. The suffix keeps the prefix and the `.log` tail intact, so
+    // the plugin still sees it as one of ours.
+    if target.exists() {
+        target = dir.join(format!(
+            "{stem}_{stamp}-{}-{}.log",
+            std::process::id(),
+            TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
+    }
+
+    rename_with_retry(path, &target)
+}
+
+/// Delete rotated logs beyond `keep`, oldest first.
+///
+/// Same selection and ordering the plugin uses — the timestamp format sorts
+/// lexicographically, so a plain name sort is a chronological one.
+fn prune_rotated_logs(dir: &Path, stem: &str, keep: usize) -> std::io::Result<()> {
+    let prefix = format!("{stem}_");
+
+    let mut rotated: Vec<PathBuf> = fs::read_dir(dir)?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            let name = entry.file_name().to_string_lossy().into_owned();
+            (name.starts_with(&prefix) && name.ends_with(".log")).then(|| entry.path())
+        })
+        .collect();
+
+    if rotated.len() <= keep {
+        return Ok(());
+    }
+    rotated.sort();
+
+    for path in rotated.iter().take(rotated.len() - keep) {
+        fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
+/// Per-user log file stem for this process. See [`Storage::log_file`].
+fn log_file_stem() -> String {
+    // `cfg!` rather than `#[cfg]` so both branches keep compiling everywhere.
+    let variable = if cfg!(windows) { "USERNAME" } else { "USER" };
+
+    log_file_stem_from(std::env::var(variable).ok().as_deref())
+}
+
+/// Body of [`log_file_stem`], with the environment injected so it is testable.
+fn log_file_stem_from(user: Option<&str>) -> String {
+    match user.and_then(sanitize_user) {
+        Some(user) => format!("{LOG_FILE_BASE}-{user}"),
+        // Unset or entirely unusable. Any fixed name is equally shared, so
+        // there is nothing better to do than fall back to the bare base — which
+        // is also what every pre-existing install already has on disk.
+        None => LOG_FILE_BASE.to_string(),
+    }
+}
+
+/// Reduce a user name to something safe in a file name.
+///
+/// Anything outside `[A-Za-z0-9_-]` becomes `-` rather than being dropped, so
+/// two distinct names cannot collapse onto each other, and the result is
+/// trimmed of leading and trailing separators. `None` when nothing usable is
+/// left.
+fn sanitize_user(raw: &str) -> Option<String> {
+    let mapped: String = raw
+        .chars()
+        .take(MAX_LOG_USER_CHARS)
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+
+    let trimmed = mapped.trim_matches('-');
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
 /// Keep the data directory out of other users' reach where the OS makes that a
@@ -632,22 +925,51 @@ mod tests {
     }
 
     #[test]
-    fn both_shared_locations_carry_a_notice() {
+    fn a_portable_install_warns_that_the_folder_is_shared() {
         let tmp = tempfile::tempdir().expect("tempdir");
+        let storage = Storage::resolve(vec![("nextToExe", tmp.path().join("portable"))]);
+        let info = storage.info();
 
-        for source in ["nextToExe", "temp"] {
-            let dir = tmp.path().join(source);
-            let storage = Storage::resolve(vec![(source, dir)]);
-            let info = storage.info();
+        assert!(info.writable, "a portable install is still usable");
+        assert!(
+            info.notices
+                .iter()
+                .any(|n| n.contains("shared with other users")),
+            "got {:?}",
+            info.notices
+        );
+    }
 
-            assert!(info.writable, "{source} should still be usable");
+    #[test]
+    fn the_temp_notice_is_accurate_for_the_platform_it_runs_on() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let storage = Storage::resolve(vec![("temp", tmp.path().join("temp"))]);
+        let info = storage.info();
+
+        assert!(info.writable);
+        let notice = info
+            .notices
+            .iter()
+            .find(|n| n.contains("temporary folder"))
+            .expect("temp must explain itself")
+            .clone();
+
+        if cfg!(windows) {
+            // `GetTempPath()` yields `%LOCALAPPDATA%\Temp`, which is per-user
+            // and *inside* the localAppDataEnv candidate. Claiming it is shared
+            // is wrong, and claiming it is a fallback from that candidate is
+            // worse — an ACL that rejected the profile rejects this too.
             assert!(
-                info.notices
-                    .iter()
-                    .any(|n| n.contains("shared with other users")),
-                "{source} must warn about being shared, got {:?}",
-                info.notices
+                !notice.contains("shared with other users"),
+                "temp is per-user on Windows: {notice}"
             );
+            assert!(notice.contains("inside your own user profile"), "{notice}");
+            assert!(notice.contains("not an independent fallback"), "{notice}");
+            assert!(notice.contains("reboot"), "{notice}");
+        } else {
+            // `/tmp` genuinely is machine-wide, and genuinely is an independent
+            // backstop.
+            assert!(notice.contains("shared with other users"), "{notice}");
         }
     }
 
@@ -994,6 +1316,309 @@ mod tests {
         let logs = storage.log_dir().expect("log dir");
         assert_eq!(logs, tmp.path().join("logs"));
         assert!(logs.is_dir(), "probing must have created it");
+    }
+
+    #[test]
+    fn the_log_probe_opens_the_file_the_plugin_will_open_and_leaves_it_there() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let storage = storage_in(tmp.path());
+
+        // The point of the whole exercise: the plugin's folder target opens
+        // `<stem>.log` with create+append, so that is what has to be proven —
+        // not a uniquely-named file nobody will ever open again.
+        let active = tmp
+            .path()
+            .join("logs")
+            .join(format!("{}.log", storage.log_file()));
+
+        assert!(active.is_file(), "the probe must create the real log file");
+        assert_eq!(
+            fs::read(&active).expect("read").len(),
+            0,
+            "and must not write to it"
+        );
+    }
+
+    #[test]
+    fn an_existing_log_file_survives_the_probe_untouched() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().to_path_buf();
+        let logs = dir.join("logs");
+        let stem = log_file_stem();
+        fs::create_dir_all(&logs).expect("mkdir");
+        fs::write(logs.join(format!("{stem}.log")), b"previous session\n").expect("write");
+
+        let storage = Storage::resolve(vec![("appData", dir)]);
+
+        assert!(storage.log_dir().is_some());
+        assert_eq!(
+            fs::read(logs.join(format!("{stem}.log"))).expect("read"),
+            b"previous session\n",
+            "appending is not truncating, and the probe must not delete it"
+        );
+    }
+
+    #[test]
+    fn a_log_file_that_cannot_be_opened_disqualifies_the_log_dir_only() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dir = tmp.path().to_path_buf();
+        let logs = dir.join("logs");
+        fs::create_dir_all(&logs).expect("mkdir");
+
+        // Occupy the log file's own path with a directory, so the append-open
+        // fails while everything around it succeeds. This stands in for the
+        // Windows case the per-user file name exists to prevent: the folder is
+        // writable by everyone, but the file inside it was created by another
+        // user and its inherited ACE denies us. The plugin `?`-propagates that
+        // out of `tauri::Builder::build()`, which is a silent exit 1 with no
+        // window — so the probe has to catch it here.
+        fs::create_dir_all(logs.join(format!("{}.log", log_file_stem()))).expect("mkdir");
+
+        let storage = Storage::resolve(vec![("appData", dir.clone())]);
+
+        assert_eq!(storage.log_dir(), None, "no folder target may be attached");
+        // The data directory is fine, and losing a log file is not a reason to
+        // throw away a working place to keep the user's work.
+        assert_eq!(storage.dir(), Some(dir.as_path()));
+        assert!(storage.info().writable);
+        assert!(!storage.is_degraded());
+        assert!(storage
+            .info()
+            .notices
+            .iter()
+            .any(|n| n.contains("log folder")));
+    }
+
+    #[test]
+    fn an_oversized_log_is_rotated_before_the_plugin_has_to() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let logs = tmp.path().join("logs");
+        fs::create_dir_all(&logs).expect("mkdir");
+        let stem = "ketikin-test";
+        let active = logs.join(format!("{stem}.log"));
+        fs::write(&active, vec![b'x'; LOG_MAX_FILE_SIZE as usize + 1]).expect("write");
+
+        probe_log_dir(&logs, stem).expect("probe");
+
+        // The plugin's rotation is a bare `fs::rename` inside its setup closure
+        // with no retry, and a failure there aborts startup. Doing it here means
+        // it goes through the backoff and, if it still fails, costs only the log
+        // directory.
+        assert_eq!(fs::read(&active).expect("read").len(), 0);
+        let archives = rotated(&logs, stem);
+        assert_eq!(archives.len(), 1, "got {archives:?}");
+        assert_eq!(
+            fs::read(logs.join(&archives[0])).expect("read").len(),
+            LOG_MAX_FILE_SIZE as usize + 1,
+            "the previous session's log must be kept, not discarded"
+        );
+    }
+
+    #[test]
+    fn a_log_below_the_size_cap_is_left_alone() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let logs = tmp.path().join("logs");
+        fs::create_dir_all(&logs).expect("mkdir");
+        let stem = "ketikin-test";
+        fs::write(logs.join(format!("{stem}.log")), b"small").expect("write");
+
+        probe_log_dir(&logs, stem).expect("probe");
+
+        assert_eq!(
+            fs::read(logs.join(format!("{stem}.log"))).expect("read"),
+            b"small"
+        );
+        assert!(rotated(&logs, stem).is_empty());
+    }
+
+    #[test]
+    fn old_rotated_logs_are_pruned_oldest_first() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let logs = tmp.path().join("logs");
+        fs::create_dir_all(&logs).expect("mkdir");
+        let stem = "ketikin-test";
+
+        for day in 1..=4 {
+            fs::write(
+                logs.join(format!("{stem}_2026-01-0{day}_00-00-00.log")),
+                b"x",
+            )
+            .expect("write");
+        }
+        // Another user's archives, and a file that only looks like one. Both
+        // must survive: the prefix match is what keeps two users on a shared
+        // portable install from deleting each other's diagnostics.
+        fs::write(
+            logs.join("ketikin-someone-else_2026-01-01_00-00-00.log"),
+            b"x",
+        )
+        .expect("write");
+        fs::write(logs.join(format!("{stem}.log.bak")), b"x").expect("write");
+
+        probe_log_dir(&logs, stem).expect("probe");
+
+        assert_eq!(
+            rotated(&logs, stem),
+            vec![
+                format!("{stem}_2026-01-03_00-00-00.log"),
+                format!("{stem}_2026-01-04_00-00-00.log"),
+            ],
+            "the newest {LOG_KEEP_FILES} survive"
+        );
+        assert!(logs
+            .join("ketikin-someone-else_2026-01-01_00-00-00.log")
+            .is_file());
+        assert!(logs.join(format!("{stem}.log.bak")).is_file());
+    }
+
+    /// Rotated archives belonging to `stem`, sorted by name (so, by date).
+    fn rotated(logs: &Path, stem: &str) -> Vec<String> {
+        let prefix = format!("{stem}_");
+        let mut names: Vec<String> = fs::read_dir(logs)
+            .expect("read_dir")
+            .filter_map(|entry| {
+                let name = entry.ok()?.file_name().to_string_lossy().into_owned();
+                (name.starts_with(&prefix) && name.ends_with(".log")).then_some(name)
+            })
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn the_log_file_name_carries_the_user() {
+        assert_eq!(log_file_stem_from(Some("alice")), "Ketikin-alice");
+        assert_eq!(log_file_stem_from(Some("Alice_2")), "Ketikin-Alice_2");
+    }
+
+    #[test]
+    fn the_log_file_name_sanitises_anything_a_path_would_choke_on() {
+        // A domain-qualified name, a space, and a traversal attempt.
+        assert_eq!(
+            log_file_stem_from(Some(r"CORP\alice")),
+            "Ketikin-CORP-alice"
+        );
+        assert_eq!(
+            log_file_stem_from(Some("ada lovelace")),
+            "Ketikin-ada-lovelace"
+        );
+        assert_eq!(log_file_stem_from(Some("../../etc")), "Ketikin-etc");
+        assert_eq!(log_file_stem_from(Some("a/b")), "Ketikin-a-b");
+        // Distinct names must stay distinct: disallowed characters become a
+        // separator rather than vanishing.
+        assert_ne!(
+            log_file_stem_from(Some("a b")),
+            log_file_stem_from(Some("ab"))
+        );
+    }
+
+    #[test]
+    fn the_log_file_name_is_bounded_and_falls_back_when_there_is_no_user() {
+        let long = "u".repeat(MAX_LOG_USER_CHARS * 3);
+        assert_eq!(
+            log_file_stem_from(Some(&long)),
+            format!("Ketikin-{}", "u".repeat(MAX_LOG_USER_CHARS))
+        );
+
+        // Unset, empty, or nothing usable left after sanitising: any fixed name
+        // is equally shared, so there is nothing better than the bare base —
+        // which is also byte-identical to what every existing install already
+        // writes, since the plugin's own default is the product name.
+        for user in [None, Some(""), Some("   "), Some("///")] {
+            assert_eq!(log_file_stem_from(user), "Ketikin", "for {user:?}");
+        }
+    }
+
+    #[test]
+    fn the_probed_file_name_is_the_one_the_plugin_is_given() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let storage = storage_in(tmp.path());
+
+        // Two derivations would agree right up until they didn't, and the whole
+        // value of the probe is that it opened *this* file.
+        assert_eq!(storage.log_file(), log_file_stem());
+        assert!(tmp
+            .path()
+            .join("logs")
+            .join(format!("{}.log", storage.log_file()))
+            .is_file());
+    }
+
+    #[test]
+    fn resolution_diagnostics_are_buffered_in_order_for_replay() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let rejected = tmp.path().join("in-the-way");
+        fs::write(&rejected, b"x").expect("write");
+        let good = tmp.path().join("good");
+
+        let storage = Storage::resolve(vec![
+            ("appData", rejected.clone()),
+            ("nextToExe", good.clone()),
+        ]);
+
+        // `Storage::resolve` runs before `tauri::Builder`, so `log::max_level()`
+        // is still `Off` and every one of these would otherwise be dropped on
+        // the floor — including *why* the chain fell through, which is the one
+        // line a locked-down-Windows bug report needs.
+        let diagnostics = storage.take_diagnostics();
+        let messages: Vec<&str> = diagnostics.iter().map(|(_, m)| m.as_str()).collect();
+
+        assert!(
+            messages[0].contains("appData candidate") && messages[0].contains("rejected"),
+            "the rejection and its error must come first: {messages:?}"
+        );
+        assert!(messages[0].contains(&rejected.display().to_string()));
+        assert!(messages[1].contains("using") && messages[1].contains("nextToExe"));
+        // Then every notice pushed during resolution, in the order it arrived.
+        assert!(messages[2].contains("shared with other users"));
+        assert!(messages[3].contains("administrator"));
+        assert_eq!(messages.len(), 4, "got {messages:?}");
+
+        assert_eq!(diagnostics[0].0, log::Level::Warn);
+        assert_eq!(diagnostics[1].0, log::Level::Info);
+    }
+
+    #[test]
+    fn the_in_memory_fallback_explains_itself_to_the_log_too() {
+        let unusable = tempfile::tempdir().expect("tempdir");
+        let blocked = unusable.path().join("file-not-dir");
+        fs::write(&blocked, b"x").expect("write");
+
+        let storage = Storage::resolve(vec![("appData", blocked)]);
+        let messages: Vec<String> = storage
+            .take_diagnostics()
+            .into_iter()
+            .map(|(_, message)| message)
+            .collect();
+
+        assert!(messages
+            .iter()
+            .any(|m| m.contains("falling back to in-memory state")));
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.contains("lost when you close it")),
+            "the user-facing notice belongs in the log as well: {messages:?}"
+        );
+    }
+
+    #[test]
+    fn draining_the_buffer_hands_later_diagnostics_straight_to_the_logger() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let storage = storage_in(tmp.path());
+        assert_eq!(
+            storage.take_diagnostics().len(),
+            1,
+            "a clean start records only which candidate won"
+        );
+
+        // Everything after `setup` has replayed has a live logger, so nothing
+        // may keep accumulating behind it for the rest of the run.
+        fs::write(tmp.path().join("sample.json"), b"not json").expect("write");
+        storage.read::<Sample>("sample", "empty");
+
+        assert!(!storage.info().notices.is_empty(), "the notice still lands");
+        assert!(storage.take_diagnostics().is_empty(), "but is not buffered");
     }
 
     #[test]

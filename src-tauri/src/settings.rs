@@ -92,12 +92,46 @@ impl Settings {
         }
     }
 
+    /// Repair a start/stop pair that arrived from disk sharing one accelerator.
+    ///
+    /// Deliberately *not* part of [`Settings::normalize`], which also runs on
+    /// the save path: repairing there would silently rewrite a duplicate a user
+    /// typed instead of telling them about it, because `save_settings`
+    /// normalizes before it validates.
+    ///
+    /// The load path needs the opposite. [`Settings::load`] never calls
+    /// `validate`, and the duplicate rule is gated on `hotkeysEnabled`, so a
+    /// hand-edited file with `"hotkeysEnabled": false` and two identical
+    /// accelerators loads perfectly clean — and then every single save fails
+    /// from the moment the user turns hotkeys on, with no way out through the
+    /// UI. `load` must not be able to produce a state `save_settings` refuses.
+    fn repair_hotkey_clash(&mut self) {
+        if !self.start_hotkey.eq_ignore_ascii_case(&self.stop_hotkey) {
+            return;
+        }
+
+        // Reset the stop slot to its default, unless that is the very value
+        // both slots are stuck on — in which case moving the start slot is the
+        // repair. The two defaults differ, so exactly one of these always
+        // resolves the clash.
+        if DEFAULT_STOP_HOTKEY.eq_ignore_ascii_case(&self.stop_hotkey) {
+            self.start_hotkey = DEFAULT_START_HOTKEY.to_string();
+        } else {
+            self.stop_hotkey = DEFAULT_STOP_HOTKEY.to_string();
+        }
+    }
+
     /// Reject combinations that are individually valid but nonsense together.
     ///
     /// Only one rule so far: the two hotkeys cannot be the same accelerator.
     /// Without this the second registration fails with `AlreadyRegistered` and
     /// the generic hotkey error blames "another application", sending the user
     /// hunting for a conflict that is Ketikin itself.
+    ///
+    /// This stays a *rejection* rather than becoming a repair, so a user who
+    /// types a duplicate is told rather than having their choice quietly
+    /// rewritten. [`Settings::repair_hotkey_clash`] covers the load path, where
+    /// there is nobody to tell.
     pub fn validate(&self) -> Result<(), AppError> {
         if self.hotkeys_enabled && self.start_hotkey.eq_ignore_ascii_case(&self.stop_hotkey) {
             return Err(AppError::Invalid(format!(
@@ -108,11 +142,12 @@ impl Settings {
         Ok(())
     }
 
-    /// Read settings from disk, normalized. Never fails: a missing or corrupt
-    /// file yields defaults (see [`Storage::read`]).
+    /// Read settings from disk, normalized and repaired. Never fails: a missing
+    /// or corrupt file yields defaults (see [`Storage::read`]).
     pub fn load(storage: &Storage) -> Self {
         let mut settings: Settings = storage.read(FILE, "the built-in defaults");
         settings.normalize();
+        settings.repair_hotkey_clash();
         settings
     }
 
@@ -262,6 +297,78 @@ mod tests {
         Settings::default()
             .validate()
             .expect("defaults must be valid");
+    }
+
+    #[test]
+    fn load_repairs_a_duplicate_pair_that_validate_would_refuse() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let storage = Storage::resolve(vec![("appData", tmp.path().to_path_buf())]);
+
+        // The trap: the backend's duplicate rule is gated on `hotkeysEnabled`,
+        // so this file loads perfectly clean — and then every save fails from
+        // the moment the user turns hotkeys on, with no way out through the UI.
+        std::fs::write(
+            tmp.path().join("settings.json"),
+            br#"{ "hotkeysEnabled": false, "startHotkey": "Alt+K", "stopHotkey": "Alt+K" }"#,
+        )
+        .expect("write");
+
+        let mut settings = Settings::load(&storage);
+
+        assert_eq!(settings.start_hotkey, "Alt+K", "the start slot is kept");
+        assert_eq!(settings.stop_hotkey, DEFAULT_STOP_HOTKEY);
+        settings.hotkeys_enabled = true;
+        settings
+            .validate()
+            .expect("load must not produce a state save_settings refuses");
+    }
+
+    #[test]
+    fn the_repair_moves_the_start_slot_when_the_stop_default_would_clash() {
+        // Both slots stuck on the stop default: resetting stop would only
+        // recreate the clash, so the start slot has to move instead.
+        let mut settings = Settings {
+            start_hotkey: DEFAULT_STOP_HOTKEY.to_string(),
+            stop_hotkey: DEFAULT_STOP_HOTKEY.to_string(),
+            ..Settings::default()
+        };
+        settings.repair_hotkey_clash();
+
+        assert_eq!(settings.start_hotkey, DEFAULT_START_HOTKEY);
+        assert_eq!(settings.stop_hotkey, DEFAULT_STOP_HOTKEY);
+        settings.validate().expect("the repair must resolve it");
+    }
+
+    #[test]
+    fn the_repair_ignores_case_and_leaves_a_valid_pair_alone() {
+        let mut clashing = Settings {
+            start_hotkey: "Alt+K".to_string(),
+            stop_hotkey: "alt+k".to_string(),
+            ..Settings::default()
+        };
+        clashing.repair_hotkey_clash();
+        assert_eq!(clashing.stop_hotkey, DEFAULT_STOP_HOTKEY);
+
+        let original = Settings::default();
+        let mut untouched = original.clone();
+        untouched.repair_hotkey_clash();
+        assert_eq!(original, untouched);
+    }
+
+    #[test]
+    fn saving_a_duplicate_is_still_rejected_rather_than_repaired() {
+        // `save_settings` normalizes and then validates. If the repair lived in
+        // `normalize`, a user who typed a duplicate would have their choice
+        // silently rewritten instead of being told about it.
+        let mut settings = Settings {
+            start_hotkey: "Alt+K ".to_string(),
+            stop_hotkey: " Alt+K".to_string(),
+            ..Settings::default()
+        };
+        settings.normalize();
+
+        assert_eq!(settings.stop_hotkey, "Alt+K", "normalize must not repair");
+        assert!(settings.validate().is_err());
     }
 
     #[test]

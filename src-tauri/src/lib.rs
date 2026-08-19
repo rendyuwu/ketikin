@@ -25,7 +25,7 @@ use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_opener::OpenerExt;
 
-use hotkeys::HotkeyHandle;
+use hotkeys::{HotkeyHandle, HotkeyStatus};
 use settings::Settings;
 use storage::{Storage, StorageInfo};
 use templates::Template;
@@ -33,10 +33,13 @@ use tray::TrayStatus;
 use typing::{TypingHandle, TypingState};
 use updater::UpdateInfo;
 
-/// Wait before announcing degraded storage, so the WebView has attached its
-/// `storage://warning` listener. The frontend can also just call
-/// `storage_info` on mount; this event exists so it does not have to poll.
-const STORAGE_WARNING_DELAY: Duration = Duration::from_millis(1_500);
+/// Wait before announcing a startup problem, so the WebView has attached its
+/// listener. `emit` does not buffer, and the three startup events —
+/// `storage://warning`, `tray://unavailable` and `hotkey://error` — are all
+/// decided before the frontend has mounted. Each also has a pull-based
+/// counterpart (`storage_info`, `tray_status`, `hotkey_status`), which is the
+/// channel that actually guarantees delivery; these events only save a poll.
+const STARTUP_EVENT_DELAY: Duration = Duration::from_millis(1_500);
 
 /// Delay before the first background update check.
 const FIRST_UPDATE_CHECK_DELAY: Duration = Duration::from_secs(5);
@@ -44,19 +47,24 @@ const FIRST_UPDATE_CHECK_DELAY: Duration = Duration::from_secs(5);
 /// Gap between background update checks.
 const UPDATE_POLL_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
-/// Cap per log file, before rotation.
-///
-/// Set explicitly rather than inherited: the plugin defaults to 40 KB with
-/// `KeepOne`, which a single typing session rolls straight past — discarding
-/// the startup storage-resolution and hotkey-registration diagnostics, which
-/// are log-only and are exactly what a bug report needs. 1 MB across three
-/// files stays small enough to attach to an issue.
-const LOG_MAX_FILE_SIZE: u128 = 1024 * 1024;
+/// Breadcrumb written when startup aborts before a window can exist.
+const FATAL_ERROR_FILE: &str = "ketikin-startup-error.log";
 
 /// Everything the commands share.
 ///
-/// All locks are plain [`std::sync::Mutex`] and are held for as short a span as
-/// possible; none is ever held across an `.await` or across a sleep.
+/// All locks are plain [`std::sync::Mutex`]. None is ever held across an
+/// `.await`, and — the rule that matters more here — none that a *worker* can
+/// hold is ever taken on the main thread. See [`handle_window_event`]: the
+/// global-shortcut plugin marshals every register and unregister onto the main
+/// thread and blocks until it has run, so a worker holding `hotkeys.bound`
+/// while the main thread waits for that same lock would deadlock the event
+/// loop permanently.
+///
+/// `templates` *is* held across a filesystem write that can sleep for the whole
+/// of storage's rename backoff. That is deliberate — it is what keeps memory
+/// and disk from diverging — and it is safe because the commands
+/// holding it are `(async)`, so the sleep lands on a worker rather than on the
+/// event loop, and nothing on the main thread ever takes it.
 pub struct AppState {
     pub storage: Storage,
     pub settings: Mutex<Settings>,
@@ -172,8 +180,19 @@ fn get_settings(state: State<'_, AppState>) -> Settings {
 ///
 /// Registration failures do not fail this command — the rest of the settings
 /// still save. The specific accelerator that could not be claimed is reported
-/// on the `hotkey://error` event (see [`hotkeys`]).
-#[tauri::command]
+/// on the `hotkey://error` event and through `hotkey_status` (see [`hotkeys`]).
+///
+/// The one case where the persisted accelerators are *not* proven bound is a
+/// save that lands while a capture is suspended. Nothing is registered then, on
+/// purpose — see `resume_hotkeys` — so the user's choice is taken at face value
+/// and reported on if `resume` cannot claim it.
+///
+/// `(async)` because this both writes to disk and talks to the OS keyboard.
+/// The write can sleep for the whole rename backoff while a backup agent holds
+/// `settings.json`, and the frontend debounces the delay slider into a save
+/// every 400 ms — on the main thread that is an event loop that stops
+/// repainting while the user drags.
+#[tauri::command(async)]
 fn save_settings(
     settings: Settings,
     app: AppHandle,
@@ -199,7 +218,9 @@ fn list_templates(state: State<'_, AppState>) -> Vec<Template> {
     lock(&state.templates).clone()
 }
 
-#[tauri::command]
+/// `(async)` for the same reason as [`save_settings`]: `templates::save` can
+/// sleep out storage's rename backoff, and the main thread must keep painting.
+#[tauri::command(async)]
 fn create_template(
     name: String,
     content: String,
@@ -217,7 +238,7 @@ fn create_template(
     Ok(created)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn update_template(
     id: String,
     name: String,
@@ -234,7 +255,7 @@ fn update_template(
     Ok(updated)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn delete_template(id: String, state: State<'_, AppState>) -> Result<(), String> {
     let mut current = lock(&state.templates);
 
@@ -317,7 +338,11 @@ fn tray_status(state: State<'_, AppState>) -> TrayStatus {
 /// than recomputed. A second derivation would be correct right up until the
 /// fallback chain picked something unexpected, which is precisely when it
 /// matters.
-#[tauri::command]
+///
+/// `(async)` because launching the file manager is a fork-and-exec, and the
+/// opener tries several launchers in turn on Linux. It holds no lock, so
+/// nothing on the main thread can be waiting on it.
+#[tauri::command(async)]
 fn open_data_folder(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let Some(dir) = state.storage.dir() else {
         return Err(
@@ -341,7 +366,12 @@ fn open_data_folder(app: AppHandle, state: State<'_, AppState>) -> Result<(), St
 /// Without this, pressing the current start hotkey into a capture field fires
 /// a real typing run into the settings panel instead of being read as input.
 /// The frontend calls this on capture focus.
-#[tauri::command]
+///
+/// `(async)` is not about latency here, it is about deadlock. See [`AppState`]:
+/// this takes `hotkeys.bound`, and a `save_settings` on a worker holds that
+/// lock while waiting for the main thread to service a global-shortcut call.
+/// Running this on the main thread would let the two block each other forever.
+#[tauri::command(async)]
 fn suspend_hotkeys(app: AppHandle) -> Result<(), String> {
     hotkeys::suspend(&app);
     Ok(())
@@ -349,13 +379,38 @@ fn suspend_hotkeys(app: AppHandle) -> Result<(), String> {
 
 /// Re-arm the global grabs. Idempotent, and safe when nothing was suspended.
 ///
+/// This is also where accelerators saved *during* a capture are finally claimed
+/// — [`hotkeys::apply`] deliberately registers nothing while a suspend is
+/// active, so a save landing mid-capture cannot re-arm the chord the user is
+/// pressing into the field.
+///
 /// The frontend calls this on capture blur, but the backend also calls it on
-/// window blur and on close, and a `save_settings` expires any suspend — a
-/// leaked suspend would silently disable both hotkeys until restart.
-#[tauri::command]
+/// window blur and on close. A `save_settings` deliberately does *not* clear
+/// the suspend — the frontend holds it as a lease until the capture field
+/// closes — so these are the only paths that end one, and a leaked suspend
+/// would silently disable both hotkeys until restart.
+///
+/// `(async)` for the deadlock reason given on [`suspend_hotkeys`].
+#[tauri::command(async)]
 fn resume_hotkeys(app: AppHandle) -> Result<(), String> {
     hotkeys::resume(&app);
     Ok(())
+}
+
+/// Pull-based counterpart to `hotkey://error`, mirroring `storage_info` and
+/// `tray_status`.
+///
+/// Startup registration happens inside `setup`, so its `hotkey://error` fires
+/// before any frontend listener exists. Without this, an accelerator another
+/// application already owns renders in Settings as though it were bound and
+/// simply does nothing when pressed — the only record being a log line.
+///
+/// Reads a separate mutex from `hotkeys.bound`, which is why it is safe to run
+/// on the main thread while a worker holds that one. Never held across an OS
+/// call.
+#[tauri::command]
+fn hotkey_status(state: State<'_, AppState>) -> HotkeyStatus {
+    state.hotkeys.status()
 }
 
 // ---------------------------------------------------------------------------
@@ -397,6 +452,22 @@ fn auto_check_updates(app: &AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// Re-arm the hotkeys from a main-thread callback, without blocking on them.
+///
+/// These handlers run on the event loop. [`hotkeys::resume`] takes
+/// `hotkeys.bound` and then asks the global-shortcut plugin to register, which
+/// marshals back onto this very thread — so a `save_settings` already holding
+/// that lock on a worker and waiting for the event loop would deadlock against
+/// a handler here waiting for the lock. Handing the work to the async runtime
+/// keeps the event loop free to service both. Nothing downstream is ordered
+/// against these, so deferring them costs nothing.
+fn resume_hotkeys_off_thread(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        hotkeys::resume(&app);
+    });
+}
+
 fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
     let app = window.app_handle();
 
@@ -404,7 +475,7 @@ fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
         WindowEvent::CloseRequested { api, .. } => {
             // A suspend must not outlive the panel that asked for it, or both
             // hotkeys stay dead until restart.
-            hotkeys::resume(app);
+            resume_hotkeys_off_thread(app);
 
             if close_to_tray(app) {
                 api.prevent_close();
@@ -415,7 +486,7 @@ fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
         }
         // Same safety net: if the user clicks away mid-capture, the frontend's
         // blur handler may never run.
-        WindowEvent::Focused(false) => hotkeys::resume(app),
+        WindowEvent::Focused(false) => resume_hotkeys_off_thread(app),
         // There is no portable "about to minimize" hook, so minimize-to-tray is
         // implemented after the fact: the window minimizes normally and is then
         // hidden. On Windows and macOS that means a brief minimize animation
@@ -469,6 +540,16 @@ fn load_state(storage: &Storage) -> (Settings, Vec<Template>, StorageInfo) {
 }
 
 fn setup(app: &AppHandle, storage: Storage) {
+    // First thing, before anything else logs: storage resolved before
+    // `tauri::Builder` existed, so its diagnostics — which candidate was
+    // chosen, and every rejection with its error string — were buffered rather
+    // than written. Replaying here keeps the log chronological.
+    storage.replay_diagnostics();
+
+    // Reaching this point means a window is about to exist, so a breadcrumb
+    // from a previous aborted launch no longer describes reality.
+    clear_fatal_error(storage.dir());
+
     let (settings, saved_templates, info) = load_state(&storage);
     let degraded = info.degraded;
 
@@ -520,18 +601,23 @@ fn setup(app: &AppHandle, storage: Storage) {
     // At startup there is nothing bound yet and no previous value to fall back
     // to, so `previous` and `desired` are the same: a refused accelerator is
     // reported but nothing can be destroyed.
-    let effective = hotkeys::apply(app, &settings, &settings);
+    //
+    // `apply_deferred` records the failures where `hotkey_status` can serve
+    // them immediately, and hands the events back for us to emit late — same
+    // treatment as the other two startup events, and for the same reason.
+    let (effective, hotkey_failures) = hotkeys::apply_deferred(app, &settings, &settings);
     if let Some(state) = app.try_state::<AppState>() {
         *lock(&state.settings) = effective.clone();
     }
     apply_window_settings(app, &effective);
 
-    // Both startup notices are delayed for the same reason: `emit` does not
-    // buffer, so firing now would land before the WebView attaches a listener.
+    // All three startup notices are delayed for the same reason: `emit` does
+    // not buffer, so firing now would land before the WebView attaches a
+    // listener.
     if degraded {
         let handle = app.clone();
         tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(STORAGE_WARNING_DELAY).await;
+            tokio::time::sleep(STARTUP_EVENT_DELAY).await;
             let _ = handle.emit(storage::EVENT_WARNING, info);
         });
     }
@@ -539,8 +625,18 @@ fn setup(app: &AppHandle, storage: Storage) {
     if let Some(message) = tray_failure {
         let handle = app.clone();
         tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(STORAGE_WARNING_DELAY).await;
+            tokio::time::sleep(STARTUP_EVENT_DELAY).await;
             let _ = handle.emit(tray::EVENT_UNAVAILABLE, TrayUnavailable { message });
+        });
+    }
+
+    if !hotkey_failures.is_empty() {
+        let handle = app.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(STARTUP_EVENT_DELAY).await;
+            for failure in hotkey_failures {
+                let _ = handle.emit(hotkeys::EVENT_ERROR, failure);
+            }
         });
     }
 
@@ -561,16 +657,22 @@ fn setup(app: &AppHandle, storage: Storage) {
 /// exist: no window, no error, silent exit 1.
 ///
 /// `TargetKind::Folder` is fallible for the same reasons, so it is only
-/// attached to a directory that has just passed a real write probe. That turns
-/// a deterministic property of the environment into a TOCTOU window of
-/// microseconds. Stdout is infallible and always present.
+/// attached to a directory whose probe has already performed every operation
+/// the folder target performs — the append-open, the rotation and the pruning —
+/// against the very file named here. That turns a deterministic property of the
+/// environment into a TOCTOU window of microseconds. Stdout is infallible and
+/// always present.
+///
+/// `file_name` is never `None`: the plugin would then fall back to the package
+/// name, which is shared between users, and the probe would have qualified a
+/// different file than the one that gets opened.
 fn log_targets(storage: &Storage) -> Vec<Target> {
     let mut targets = vec![Target::new(TargetKind::Stdout)];
 
     match storage.log_dir() {
         Some(path) => targets.push(Target::new(TargetKind::Folder {
             path: path.to_path_buf(),
-            file_name: None,
+            file_name: Some(storage.log_file().to_string()),
         })),
         None => log::warn!("logging to stdout only; no writable log directory"),
     }
@@ -584,12 +686,25 @@ fn log_targets(storage: &Storage) -> Vec<Target> {
 /// so a fatal error would otherwise be completely invisible. The storage
 /// directory has already passed a write probe by this point, which makes it the
 /// one place we know we can leave a breadcrumb.
-fn record_fatal_error(path: Option<&std::path::Path>, message: &str) {
-    let Some(path) = path else {
+fn record_fatal_error(dir: Option<&std::path::Path>, message: &str) {
+    let Some(dir) = dir else {
         return;
     };
     let stamp = chrono::Utc::now().to_rfc3339();
-    let _ = std::fs::write(path, format!("[{stamp}] {message}\n"));
+    let _ = std::fs::write(dir.join(FATAL_ERROR_FILE), format!("[{stamp}] {message}\n"));
+}
+
+/// Drop the breadcrumb once a launch has got far enough to have a window.
+///
+/// The docs tell readers that this file's presence means startup failed. Left
+/// behind, one transient failure keeps pointing support at a fixed problem for
+/// the next hundred good launches. Best-effort in both directions: a failure to
+/// delete it is not worth telling anyone about.
+fn clear_fatal_error(dir: Option<&std::path::Path>) {
+    let Some(dir) = dir else {
+        return;
+    };
+    let _ = std::fs::remove_file(dir.join(FATAL_ERROR_FILE));
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -599,17 +714,20 @@ pub fn run() {
     // fails inside `Builder` aborts startup before our setup hook could react.
     let storage = Storage::resolve(Storage::candidates());
     let targets = log_targets(&storage);
-    let fatal_path = storage
-        .dir()
-        .map(|dir| dir.join("ketikin-startup-error.log"));
+    let fatal_dir = storage.dir().map(std::path::Path::to_path_buf);
 
     let result = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
                 .targets(targets)
-                .max_file_size(LOG_MAX_FILE_SIZE)
-                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(2))
+                // Both of these come from `storage` rather than being written
+                // here, because the log probe has to make exactly the same
+                // rotation and pruning decisions the plugin will.
+                .max_file_size(u128::from(storage::LOG_MAX_FILE_SIZE))
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(
+                    storage::LOG_KEEP_FILES,
+                ))
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
@@ -635,6 +753,7 @@ pub fn run() {
             tray_status,
             suspend_hotkeys,
             resume_hotkeys,
+            hotkey_status,
             open_data_folder,
         ])
         .setup(move |app| {
@@ -648,7 +767,7 @@ pub fn run() {
         let message = format!("ketikin could not start: {err}");
         log::error!("{message}");
         eprintln!("{message}");
-        record_fatal_error(fatal_path.as_deref(), &message);
+        record_fatal_error(fatal_dir.as_deref(), &message);
         std::process::exit(1);
     }
 }
@@ -745,6 +864,44 @@ mod tests {
         .expect("serialize");
 
         assert_eq!(json, r#"{"message":"no tray"}"#);
+    }
+
+    #[test]
+    fn a_startup_breadcrumb_is_written_and_then_cleared_by_the_next_good_launch() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join(FATAL_ERROR_FILE);
+
+        record_fatal_error(Some(tmp.path()), "ketikin could not start: boom");
+        let recorded = std::fs::read_to_string(&path).expect("read");
+        assert!(recorded.contains("ketikin could not start: boom"));
+
+        // A launch that reaches `setup` has a window, so the file no longer
+        // describes anything true. Left behind, it points support at a problem
+        // that was fixed a hundred launches ago.
+        clear_fatal_error(Some(tmp.path()));
+        assert!(!path.exists());
+
+        // Best-effort in both directions: nothing to delete, and no directory
+        // at all (in-memory mode) must both be silent no-ops.
+        clear_fatal_error(Some(tmp.path()));
+        clear_fatal_error(None);
+        record_fatal_error(None, "nowhere to write this");
+    }
+
+    #[test]
+    fn the_folder_target_is_attached_exactly_when_the_probe_qualified_one() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+
+        let healthy = Storage::resolve(vec![("appData", tmp.path().join("healthy"))]);
+        assert!(healthy.log_dir().is_some());
+        assert_eq!(log_targets(&healthy).len(), 2, "stdout plus the folder");
+
+        // `TargetKind::Folder` propagates its failures out of the plugin's setup
+        // closure, which runs before ours and takes the whole app with it — so
+        // an unqualified directory must never be handed to it.
+        let memory = Storage::resolve(Vec::new());
+        assert_eq!(memory.log_dir(), None);
+        assert_eq!(log_targets(&memory).len(), 1, "stdout only");
     }
 
     #[test]
