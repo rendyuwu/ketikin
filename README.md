@@ -579,3 +579,7 @@ For a map of how the app is put together, see [docs/ARCHITECTURE.md](docs/ARCHIT
 ## License
 
 MIT — see [LICENSE](LICENSE). Copyright (c) 2026 rendyuwu.
+
+The interface is set in IBM Plex Sans and IBM Plex Mono, bundled with the app under the SIL Open
+Font License 1.1. Copyright IBM Corp. The licence text ships alongside the fonts in
+[`src/fonts/`](src/fonts).

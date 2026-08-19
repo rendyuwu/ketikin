@@ -128,7 +128,7 @@ export function SettingsPanel({
   // Styling only, inside a section the user chose to open — so notices count
   // here even when they don't warrant a banner. This is "is there something to
   // read", not "is this degraded".
-  const storageWarn = storage ? storage.degraded || notices.length > 0 : false;
+  const storageNotable = storage ? storage.degraded || notices.length > 0 : false;
   const updateInfo = updater.info;
 
   return (
@@ -314,7 +314,7 @@ export function SettingsPanel({
           ) : null}
 
           {storage ? (
-            <div className={storageWarn ? "storage storage--warn" : "storage"}>
+            <div className={storageNotable ? "storage storage--notice" : "storage"}>
               <code className="storage-path">{storage.path}</code>
               <p className="storage-note">{describeStorage(storage)}</p>
               {!storage.writable ? (
