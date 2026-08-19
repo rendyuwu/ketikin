@@ -22,7 +22,12 @@ enigo = "0.6.1"
 log = "0.4.33"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-tauri = { version = "2", features = ["tray-icon"] }
+# `image-png` is what makes `Image::from_bytes` exist, which is how the macOS
+# tray loads its template icon. It is not free: it pulls `image` and, through it,
+# `byteorder-lite`, `moxcms` and `pxfm`, on every platform, for one 36px PNG that
+# only macOS reads. Accepted deliberately over embedding a raw RGBA blob, which
+# would need no feature but would mean shipping the same image twice.
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-log = "2"
 tauri-plugin-opener = "2"

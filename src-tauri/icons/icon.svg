@@ -1,14 +1,45 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- Rounded-square background -->
-  <rect width="1024" height="1024" rx="224" ry="224" fill="#2F6FED"/>
+<!--
+  Ketikin's icon, authored on a 16-unit grid and scaled up rather than drawn at
+  1024 and scaled down. Almost every place this icon is ever seen — the titlebar,
+  the Windows tray, the macOS menu bar — is 16 or 18 pixels across, so 16 is the
+  size the drawing has to work at, and `viewBox="0 0 16 16"` means the 16px
+  raster and the 1024px raster are the same geometry rather than one derived from
+  the other.
 
-  <!-- Keycap: outer plate -->
-  <rect x="208" y="248" width="608" height="528" rx="88" ry="88" fill="#FFFFFF"/>
-  <!-- Keycap: inset face, punched out so the blue reads as the bevel -->
-  <rect x="272" y="312" width="480" height="400" rx="56" ry="56" fill="#2F6FED"/>
+  What that rules out is what the previous icon was made of: four nested shapes
+  with three concentric outlines, every one of which fell under a pixel at 16 and
+  smeared into a blue lozenge. Here there is one solid form and one knockout —
+  a knockout survives downscaling because it has no stroke width to lose.
 
-  <!-- Text cursor sitting on the keycap face: I-beam with a caret bar -->
-  <rect x="472" y="376" width="80" height="272" fill="#FFFFFF"/>
-  <rect x="392" y="376" width="240" height="52" fill="#FFFFFF"/>
-  <rect x="392" y="596" width="240" height="52" fill="#FFFFFF"/>
+  Every coordinate is a whole unit, so every size that is a multiple of 16 — the
+  16, 32, 48, 64, 256, 512 and 1024 rasters, which is all of them but one — puts
+  each edge on a pixel boundary and only the corner radii anti-alias, which is
+  what corner radii are for. The exception is the 24px entry in the .ico, where
+  1.5x lands the caret's edges on half pixels; a solid block with two soft edges
+  still reads, and moving the caret to an even row to fix it costs the thing that
+  makes the mark work (see below). Moving a number here is therefore not a free
+  nudge: it decides whether the 16px raster is crisp.
+
+  The caret sits one unit above the keycap's lower edge rather than centred. That
+  single unit is what makes it an underscore resting on a baseline instead of a
+  minus sign in a box — the difference is obvious at 16px and invisible at 1024,
+  which is exactly the trap of drawing this large.
+
+  Brass #E2A33C on graphite #1A1C1F is the app's own accent on its own sunken
+  surface. It used to be #2F6FED, which matched neither theme's accent — three
+  blues in one product.
+
+  (No double hyphens below this line: XML forbids them inside a comment, which is
+  why the CSS custom properties are named in prose rather than written out.)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 16 16">
+  <!-- Graphite tile -->
+  <rect width="16" height="16" rx="3.5" ry="3.5" fill="#1A1C1F"/>
+
+  <!-- Brass keycap: one solid form, no bevel, no inset face -->
+  <rect x="2" y="2" width="12" height="12" rx="2.5" ry="2.5" fill="#E2A33C"/>
+
+  <!-- Caret, knocked out of the keycap in the tile's own colour: over an opaque
+       ground that is identical to a mask and keeps the file to three shapes -->
+  <rect x="4" y="11" width="8" height="2" fill="#1A1C1F"/>
 </svg>

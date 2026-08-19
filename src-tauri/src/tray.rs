@@ -103,16 +103,54 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             }
         });
 
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
-    } else {
-        log::warn!("tray: no bundled window icon available; using the system default");
-    }
+    builder = with_icon(app, builder);
 
     builder.build(app)?;
     log::info!("tray: icon created");
 
     Ok(())
+}
+
+/// Give the tray its icon.
+///
+/// Split by platform because macOS wants a different *artifact*, not a different
+/// size of the same one: the menu bar expects a template image — black plus alpha,
+/// which the system tints itself, so it inverts against a light or dark menu bar
+/// and dims with the rest of the bar when the app is inactive. A full-colour tile
+/// there reads as a foreign object beside every other item, and no choice of
+/// colour fixes that.
+///
+/// Everywhere else the bundled window icon is right and is already the correct
+/// artifact: `default_window_icon` resolves to `icons/icon.ico` on Windows (whose
+/// 16px entry is drawn for 16px) and to the first PNG in `tauri.conf.json`'s icon
+/// list, `icons/32x32.png`, elsewhere.
+fn with_icon<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    builder: TrayIconBuilder<R>,
+) -> TrayIconBuilder<R> {
+    #[cfg(target_os = "macos")]
+    {
+        // Decoded at startup rather than at build time because `Image` owns
+        // pixels, not a PNG; the bytes themselves are embedded, so this cannot
+        // fail on a missing file, only on a corrupt one.
+        match tauri::image::Image::from_bytes(include_bytes!("../icons/tray-macos-template.png")) {
+            Ok(icon) => return builder.icon(icon).icon_as_template(true),
+            Err(err) => {
+                // Fall through to the window icon rather than giving up: an icon
+                // that looks wrong in the menu bar still beats no tray at all,
+                // because with `closeToTray` on the tray menu is the only way to
+                // quit.
+                log::warn!("tray: template icon unusable ({err}); falling back to the window icon");
+            }
+        }
+    }
+
+    if let Some(icon) = app.default_window_icon() {
+        builder.icon(icon.clone())
+    } else {
+        log::warn!("tray: no bundled window icon available; using the system default");
+        builder
+    }
 }
 
 /// Reveal, unminimize, and focus the main window.

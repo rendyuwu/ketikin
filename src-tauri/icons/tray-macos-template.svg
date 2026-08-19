@@ -1,0 +1,29 @@
+<!--
+  The macOS menu bar variant. Source of tray-macos-template.png, which tray.rs
+  embeds; nothing else consumes this file.
+
+  A template image is black plus alpha and nothing else: macOS tints it itself, so
+  it inverts with a light or dark menu bar and dims with the rest of the bar when
+  the app is inactive. That is why there is no tile and no brass here — a
+  full-colour square in the menu bar reads as a foreign object next to every
+  other item, which no amount of getting the colour right can fix.
+
+  Drawn on an 18-unit grid, not 16, because tray-icon scales whatever it is given
+  to 18 points tall. 36px is therefore an exact 2x: one device pixel per unit on
+  a Retina display, and a clean 2:1 downsample on anything else. Both keep whole
+  pixels, which is the whole reason for the grid change.
+
+  Geometry is the app icon's keycap and caret at 18/16 scale, the caret still one
+  unit clear of the lower edge. The knockout is a real hole punched with a mask
+  rather than a shape filled in the background colour: here there is no
+  background to match, and a white caret on a black key would come out as a white
+  caret whatever the menu bar is doing.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 18 18">
+  <mask id="caret">
+    <rect width="18" height="18" fill="#FFFFFF"/>
+    <rect x="5" y="12" width="8" height="2" fill="#000000"/>
+  </mask>
+
+  <rect x="1" y="1" width="16" height="16" rx="3.5" ry="3.5" fill="#000000" mask="url(#caret)"/>
+</svg>
