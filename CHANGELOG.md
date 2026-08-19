@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-20
+
 ### Added
 
 - **The tray icon shows when a run is going.** Ketikin's whole premise is that you are not looking at
@@ -257,5 +259,6 @@ accept clipboard paste.
   `.msi`), **Linux x64** (`.AppImage`, `.deb`, and `.rpm`), and **macOS** on both Intel x64 and
   Apple Silicon arm64 (`.dmg`).
 
-[Unreleased]: https://github.com/rendyuwu/ketikin/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/rendyuwu/ketikin/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/rendyuwu/ketikin/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/rendyuwu/ketikin/releases/tag/v0.1.0
