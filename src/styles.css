@@ -412,10 +412,11 @@ body {
    the state matters most would have been the one control that never showed it.
    The other two keep `:focus-visible`, so the set of states that show an
    indicator is exactly what it was and only the shape changed.
-   `.compose-input` opts out entirely and is marked on its parent's hairline.
+   `.compose-input` opts out entirely and is marked on its parent's hairline,
+   and `.cadence-slider` moves the ring onto its thumb — see the note there.
    Everything else keeps the ring above and has to: a button, a tab, the toggle
-   track, a template row, the cadence slider, a link and an icon button have no
-   edge of their own to thicken. */
+   track, a template row, a link and an icon button have no edge of their own to
+   thicken. */
 .input:focus-visible,
 .textarea:focus-visible,
 .hotkey:focus {
@@ -1351,6 +1352,43 @@ body {
   background: var(--text);
   border: 0;
   border-radius: 50%;
+}
+
+/* The last control still wearing the global ring, and the one it fitted worst:
+   a 2px rectangle 2px clear of an 18px-tall input box, drawn around a 2px
+   hairline track that occupies one ninth of it. Nothing here is clipped, so
+   this is not the fix the scroll containers needed — it is the same aesthetic
+   complaint as the fields', on the one control that has no edge to thicken
+   instead.
+   So the mark goes where the state actually lives: the thumb is what a keyboard
+   user moves with the arrow keys, it is the only part of this control that
+   carries a value, and it is a 12px target rather than a 428px one. Two shadows
+   rather than an outline: `outline` on a vendor thumb pseudo-element is not
+   reliably drawn, `box-shadow` on one is, and the first shadow does the job
+   `outline-offset` does elsewhere — 2px of --bg that separates ring from thumb
+   and hides the track running behind it, without which the ring reads as a
+   fatter dot and not as focus at all (checked in Chromium at both ends of the
+   travel and in both themes). The two spreads spend the same 2px of clearance
+   and 2px of line the global ring does, so this is that ring's geometry bent
+   around a circle rather than a second, smaller indicator.
+   The ring is 20px across inside an 18px box and is not clipped: a slider does
+   not clip its thumb's shadow, and shadows never affect layout, so the grid row
+   keeps its height. Both vendor families again, for the reason the track and
+   thumb above carry both. */
+.cadence-slider:focus-visible {
+  outline: none;
+}
+
+.cadence-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--focus);
+}
+
+.cadence-slider:focus-visible::-moz-range-thumb {
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--focus);
 }
 
 /* Countdown takeover. The screen visibly changes mode, so a glance answers "did
