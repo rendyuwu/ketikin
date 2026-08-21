@@ -226,12 +226,18 @@ fn label(running: bool) -> &'static str {
 /// colour fixes that.
 ///
 /// For the idle state everywhere else the bundled window icon is right and is
-/// already the correct artifact: `default_window_icon` resolves to
-/// `icons/icon.ico` on Windows (whose 16px entry is drawn for 16px) and to the
-/// first PNG in `tauri.conf.json`'s icon list, `icons/32x32.png`, elsewhere. The
-/// run state has no bundle entry, so it ships as a 32px render of the same
+/// already the correct artifact: `default_window_icon` resolves to the first PNG
+/// in `tauri.conf.json`'s icon list, `icons/32x32.png`, and on Windows to a
+/// single entry of `icons/icon.ico` — the first one, which is all that
+/// `tauri-codegen` decodes, and which is deliberately the 64px render. Why that
+/// entry and not another is in `icons/README.md`; the short version is that 64
+/// halves cleanly to the 16px the tray actually draws at.
+///
+/// The run state has no bundle entry, so it ships as a 32px render of the same
 /// 16-unit grid; every coordinate in it is a whole unit, so the halving Windows
-/// does to reach 16px lands each edge back on a pixel boundary.
+/// does to reach 16px lands each edge back on a pixel boundary. That it is a
+/// different pixel size from the Windows idle icon costs nothing — both are
+/// scaled to whatever the tray asks for, and the drawing is the same either way.
 ///
 /// `None` only when there is no artifact at all for this state, which takes a
 /// bundle with no window icon. The caller leaves whatever is showing alone.
@@ -316,10 +322,14 @@ fn quit(app: &AppHandle) {
 mod tests {
     use super::*;
 
-    /// The artifact this platform shows when idle. On macOS that is the embedded
-    /// template; elsewhere it is what `default_window_icon` resolves to, which
-    /// cannot be reached without a running app, so the test reads the same file
-    /// off disk instead.
+    /// The idle drawing at the run artifact's size, for a pixel comparison.
+    ///
+    /// On macOS it is exactly what ships: the embedded template. Elsewhere the
+    /// live idle icon is `default_window_icon`, which cannot be reached without a
+    /// running app, so this stands in for it — the same drawing, rendered at the
+    /// same 32px the run artifact is. On Windows the live one is the `.ico`'s
+    /// 64px entry, a different size of this same drawing, which is why the
+    /// substitution is needed rather than merely convenient.
     #[cfg(target_os = "macos")]
     const IDLE_FOR_COMPARISON: &[u8] = include_bytes!("../icons/tray-macos-template.png");
     #[cfg(not(target_os = "macos"))]
@@ -355,6 +365,41 @@ mod tests {
         assert!(
             differing >= 4,
             "the run marker is missing or too small: {differing} pixels differ"
+        );
+    }
+
+    /// `icons/icon.ico` carries six sizes, but `tauri-codegen` decodes exactly
+    /// one of them into the RGBA that becomes the Windows window icon and, through
+    /// `artifact`, the Windows idle tray icon: `icon_dir.entries()[0]`. Whichever
+    /// entry is physically first in the file is therefore the only one those two
+    /// surfaces ever see, at every display scaling.
+    ///
+    /// It is 64px on purpose — the argument is in `icons/README.md`. Nothing about
+    /// the file says so, and every tool that writes a `.ico` orders the entries its
+    /// own way, so a regeneration would put the order back to whatever it likes and
+    /// nobody on a non-Windows machine would notice. This test is the thing that
+    /// notices. If it fails after regenerating the icon, reorder the entries rather
+    /// than relaxing the assertion.
+    ///
+    /// Reads the header by hand because the `ico` crate is a build-time dependency
+    /// of `tauri-codegen`, not one of ours, and the two fields this needs sit at
+    /// fixed offsets: `ICONDIR` is six bytes (reserved `0`, type `1` for an icon,
+    /// then the entry count), and the first `ICONDIRENTRY` opens at byte 6 with its
+    /// width and height as one byte each.
+    #[test]
+    fn the_ico_leads_with_the_entry_windows_decodes_at_runtime() {
+        const ICO: &[u8] = include_bytes!("../icons/icon.ico");
+
+        assert_eq!(
+            &ICO[..4],
+            &[0, 0, 1, 0],
+            "icons/icon.ico is not an ICONDIR any more; the offsets below mean nothing"
+        );
+        assert_eq!(
+            (ICO[6], ICO[7]),
+            (64, 64),
+            "icons/icon.ico must lead with its 64px entry: the first entry is the whole \
+             Windows runtime icon, and a smaller one gets scaled up above 100% display scaling"
         );
     }
 

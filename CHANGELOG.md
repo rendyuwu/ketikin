@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The Windows titlebar and tray icon are no longer a small raster blown up.** `icon.ico` ships six
+  purpose-drawn sizes, but only one of them ever reaches the running window: Tauri's build-time
+  codegen decodes `entries()[0]` and discards the rest, so whichever entry happens to be physically
+  first in the file becomes the icon at every display scaling
+  ([tauri-apps/tauri#14596](https://github.com/tauri-apps/tauri/issues/14596)). That entry was the
+  32px one, so above 100% scaling Windows was enlarging a 32px drawing — the exact smearing that
+  redrawing the icon for small sizes ([#11](https://github.com/rendyuwu/ketikin/issues/11)) existed
+  to remove. The file now leads with its 64px entry, so every size Windows asks for is reached by
+  scaling down from a purpose-drawn raster rather than up from a small one. 64 rather than 48, which
+  was the other candidate: the drawing is on a 16-unit grid with every coordinate a whole unit, so 64
+  halves exactly to the 32 and 16 that 100% scaling asks for and each edge lands back on a pixel
+  boundary, where 48 would have reached 32 at 1.5:1 and made the most common configuration softer in
+  order to be exact at 150%. All six entries stay in the file byte for byte, so the Explorer, Start
+  Menu and shortcut icons — which read the whole group and pick their own size — are untouched. The
+  order is the kind of thing a regeneration undoes silently, so the reasoning is written down in
+  `src-tauri/icons/README.md` and a test asserts it.
+  ([#24](https://github.com/rendyuwu/ketikin/issues/24))
+
 - **The scrollbar is no longer the loudest thing on the screen.** Its thumb was filled with the token
   that draws the boundary of a control, which is held at 3.4:1 so the edge of a button cannot be
   missed — a value the scrollbar inherited by accident of naming rather than by decision. In Settings
