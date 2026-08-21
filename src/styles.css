@@ -856,14 +856,15 @@ body {
 /* Puts the unit inside the field's right edge so the label can be "Delay"
    rather than "Delay (ms)" — a word less per field, and it reads like an
    instrument. */
+/* Both grid containers this lands in — `.field` and `.cadence` — place it
+   themselves, because a grid item stretches unless told not to and a stretched
+   wrapper puts the suffix against the panel's edge rather than the field's. It
+   carried its own `justify-self: start` while fields stacked their labels; both
+   containers now want it at their inline end, and both say so. */
 .input-affix {
   position: relative;
   display: inline-flex;
   align-items: center;
-  /* `.field` is a grid, whose items stretch by default — without this the
-     wrapper spans the panel and the suffix lands against the panel's edge
-     instead of the field's. */
-  justify-self: start;
 }
 
 .input-suffix {
@@ -892,9 +893,6 @@ body {
   display: inline-flex;
   align-items: center;
   max-width: 100%;
-  /* Same reason as `.input-affix`: a grid item stretches unless told not to,
-     which would put the chevron at the panel's edge. */
-  justify-self: start;
 }
 
 .select {
@@ -1059,14 +1057,57 @@ body {
 
 /* =============================================================== field == */
 
+/* One row, the same shape as `.toggle`: name on the left, control against the
+   right edge. It used to stack the label above the control, and a section could
+   run the two grammars back to back — the Window section still opens with a
+   select and then lists three switches — which is what read as "a form" long
+   after the boxes were gone. Collapsing the stack also returns the 27px each
+   field spent on a label line, and closes the 300-440px gutter that sat to the
+   right of every 96px number input.
+   `minmax(0, 1fr)` rather than `1fr` for the label column: a long label wraps
+   inside its half instead of pushing the control past the panel's right edge,
+   which at 460px it otherwise does. */
 .field {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: var(--s-tight);
 }
 
+/* `display: contents`, so the slot marks which children are the control without
+   becoming a box of its own. The slot has to exist: `HotkeyInput` returns a
+   fragment — a button row plus up to two `.field-error` paragraphs — so a
+   field's control is not reliably one element, and the two rules below need
+   something to select. A real block here would work for the layout and trap
+   those paragraphs inside a control column sized to a 96px input, where a
+   sentence wraps to five lines; `contents` promotes them to grid items of the
+   field itself, which is what lets an error claim its own full-width row. */
+.field-control {
+  display: contents;
+}
+
+.field-control > * {
+  grid-column: 2;
+  justify-self: end;
+  min-width: 0;
+}
+
+/* Both are sentences, so both span the pair rather than living in a column sized
+   to a control. Spanning is also what puts them under the row instead of beside
+   the label: an item covering both columns cannot share a row with one that
+   already occupies the first, so the grid opens the next one. */
+.field-control > .field-error,
+.field-hint {
+  grid-column: 1 / -1;
+  justify-self: stretch;
+}
+
+/* Full strength, like `.toggle-label`. --text-muted was right while this sat
+   above its control as a form label, and wrong now that it is the left half of a
+   row: in the Window section a muted "Theme" directly above a --text "Minimize
+   to tray" would rank two rows that are peers. */
 .field-label {
   font-size: 13px;
-  color: var(--text-muted);
 }
 
 .field-hint {
@@ -1359,8 +1400,8 @@ body {
   color: var(--text-muted);
 }
 
-/* `.input-affix` pins itself to the start for the Settings grid; here the field
-   is the row's right edge. */
+/* The field is this row's right edge — see the note on `.input-affix`, which no
+   longer aligns itself. */
 .cadence > .input-affix {
   justify-self: end;
 }
@@ -1846,6 +1887,25 @@ body {
    combinations without a fifth rule. */
 .hotkey[aria-invalid="true"] {
   border-color: var(--danger);
+}
+
+/* The captured value and the "press a key" prompt share one grid cell, so the
+   button measures the wider of them and holds that width through focus. It did
+   not need this while the field stretched across the panel; now that it is sized
+   by its content inside a `.field` row, the prompt is 110px wider than a typical
+   accelerator, and without this a click on the field shoved itself and the Reset
+   button beside it that far sideways. `visibility` rather than the `hidden`
+   attribute: the state that is not showing still has to hold its cell open. */
+.hotkey-swap {
+  display: grid;
+}
+
+.hotkey-swap > * {
+  grid-area: 1 / 1;
+}
+
+.hotkey-swap > [data-off] {
+  visibility: hidden;
 }
 
 .hotkey-value {

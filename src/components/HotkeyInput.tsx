@@ -99,11 +99,18 @@ export function HotkeyInput({
             release();
           }}
         >
-          {capturing ? (
-            <span className="hotkey-prompt">Press a key combination…</span>
-          ) : (
-            <span className="hotkey-value">{formatAccelerator(value)}</span>
-          )}
+          {/* Both states are always in the DOM, one of them hidden, so the
+              button is as wide as the wider of the two and focusing it cannot
+              change its width — see `.hotkey-swap`. Focus on this control is
+              capture, so that swap happens on every focus. */}
+          <span className="hotkey-swap">
+            <span className="hotkey-value" data-off={capturing || undefined}>
+              {formatAccelerator(value)}
+            </span>
+            <span className="hotkey-prompt" data-off={!capturing || undefined}>
+              Press a key combination…
+            </span>
+          </span>
         </button>
         {value !== defaultValue ? (
           <button
