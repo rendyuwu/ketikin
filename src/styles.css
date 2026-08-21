@@ -124,6 +124,26 @@
   --overlay-hover: rgb(0 0 0 / 7%);
   --scrim: rgb(0 0 0 / 35%);
 
+  /* The scrollbar thumb, and deliberately *not* --control-edge — a later contrast
+     pass should not quietly pull it back there. That token is held at 3:1 because
+     SC 1.4.11 asks it of the visual information identifying a user interface
+     component; a scrollbar is not one, and the criterion exempts the default
+     rendering of a native control besides. Borrowing the value was an accident of
+     naming, and it made a solid 3.42:1 bar the highest-contrast element on a
+     screen whose content is deliberately quiet — permanently, because the
+     Settings section list always overflows a 700px window, and at full native
+     width rather than the 8px it was written for on every engine that reads
+     `scrollbar-color`. The note in the base section has that measurement.
+     Translucent rather than solid so the thumb tints whatever surface it is over
+     instead of asserting one fixed grey, which is also why these two live beside
+     --overlay-hover and --scrim rather than in the border ramp. Sampled off a
+     painted scrollbar they measure 1.46:1 at rest and 2.11:1 hovered against
+     --bg (1.59:1 and 2.69:1 on dark) — above --border, the quietest divider in
+     the app at 1.33:1, and far below --text-faint at 4.93:1. That is the
+     register a scrollbar belongs in: findable, not loud. */
+  --scrollbar-thumb: rgb(0 0 0 / 16%);
+  --scrollbar-thumb-hover: rgb(0 0 0 / 30%);
+
   /* One elevation step, and only the dialog takes it: a modal over a scrim is the
      one thing in this app that is genuinely above something else. It never carries
      a boundary — SC 1.4.11 asks 3:1 of the visual information that identifies a
@@ -266,6 +286,8 @@
 
     --overlay-hover: rgb(255 255 255 / 9%);
     --scrim: rgb(0 0 0 / 55%);
+    --scrollbar-thumb: rgb(255 255 255 / 16%);
+    --scrollbar-thumb-hover: rgb(255 255 255 / 30%);
     --shadow-raise: none; /* --scrim at 55% black is already the dialog's lift here */
   }
 }
@@ -298,6 +320,8 @@
 
   --overlay-hover: rgb(255 255 255 / 9%);
   --scrim: rgb(0 0 0 / 55%);
+  --scrollbar-thumb: rgb(255 255 255 / 16%);
+  --scrollbar-thumb-hover: rgb(255 255 255 / 30%);
   --shadow-raise: none; /* --scrim at 55% black is already the dialog's lift here */
 }
 
@@ -335,32 +359,84 @@ body {
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
-  /* Both scrollbar properties inherit, so declaring them once here covers every
-     scroll container in the app — including ones added later. */
-  scrollbar-width: thin;
-  scrollbar-color: var(--control-edge) transparent;
 }
 
-/* The OS scrollbar is wide, high-contrast and permanently visible on all three
+/* The OS scrollbar is wide, opaque and permanently visible on all three
    platforms, which puts the loudest element on the screen beside the quietest
-   content. The pseudo-elements are what Chromium and WebView2 read; the
-   inherited properties above are what Firefox and recent WebKit read. Both are
-   needed, and neither is a fallback for the other. */
+   content. Two engines have to be told otherwise and they are told twice: the
+   standard properties here, the `::-webkit-scrollbar` pseudo-elements below.
+   Neither is a fallback for the other and neither can be dropped — which of the
+   two a given webview honours is not ours to choose, so a value changed in one
+   place only is how the two drift apart. Change one, change the other, in the
+   same edit.
+   Measured in Chromium 151 rather than assumed, because both halves of the old
+   rule were wrong about it. `scrollbar-color` inherits; `scrollbar-width` does
+   not — so the `scrollbar-width: thin` this replaces sat on `body` and never
+   reached a single scroll container, while the colour beside it reached all of
+   them. And a non-`auto` value on either property makes that build ignore the
+   pseudo-elements outright: with the colour set, a `::-webkit-scrollbar` width
+   of 14px still reserved 10px of layout, the width `thin` asks for. So the old
+   pair rendered a full-width native bar filled with --control-edge on Chromium,
+   and only pre-121 builds — where `scrollbar-color` is unsupported and the
+   pseudo-elements win by default — ever showed the 8px one it was written for.
+   `thin` and the 10px below agree at 10px of gutter, so the two paths differ
+   only in the mark inside it: 4px via `background-clip` on the pseudo-element
+   path, 6px from Chromium's own thin rendering. Both are the quiet end of the
+   same idea, which is the property that matters when the engine picks.
+   On `*` rather than on `body`, for both properties and for two separate
+   reasons. `scrollbar-width` because it does not inherit and would otherwise
+   apply to nothing. `scrollbar-color` because it does: a rest value on `body`
+   plus a hover override anywhere would let a hovered ancestor push the hover
+   value down into every container beneath it, and since the pointer being
+   anywhere in the window makes `body` match `:hover`, that means all of them,
+   always. Matching `*` gives every element its own declaration, which is what
+   stops the inherited value arriving. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* Hover is keyed to the scroll container, not to the thumb. Firefox has no
+   thumb-hover selector at all — `scrollbar-color` on the container is the whole
+   API — so the container is the only state both paths can read, and keeping them
+   in step matters more here than a thumb-precise trigger. `:hover` matches every
+   ancestor under the pointer, which is what makes moving over the content light
+   up the bar beside it. */
+*:hover {
+  scrollbar-color: var(--scrollbar-thumb-hover) transparent;
+}
+
+/* 10px is the hit area, not the mark: the 3px transparent border on the thumb
+   leaves a 4px pill painted inside it, so the bar is thin to look at and still
+   full width to grab. Hiding it outright was the first thing suggested and costs
+   two things this keeps — the only sign that a list continues below the fold,
+   and pointer-dragging as a way to scroll. */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-/* The 4px is half the 8px width above, so the thumb is a pill — derived from the
-   shape the way `.toggle-track`'s radius is, not a copy of --r-control that was
-   left behind when that token moved to 6px. */
+/* `background-color`, not the `background` shorthand: the shorthand resets
+   `background-clip` to `border-box`, which would paint the transparent border
+   strip too and hand back the full 10px bar this rule exists to avoid — in the
+   hover rule below as much as here.
+   5px is half the 10px border box, so the corner is a pill; the padding box the
+   fill is clipped to inherits 5 - 3 = 2px, half of the 4px mark, which is that
+   same pill one step in. Derived from the shape the way `.toggle-track`'s radius
+   is, not a copy of --r-control. */
 ::-webkit-scrollbar-thumb {
-  background: var(--control-edge);
-  border-radius: 4px;
+  background-color: var(--scrollbar-thumb);
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 5px;
+}
+
+:hover::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb-hover);
 }
 
 :focus-visible {
@@ -1712,7 +1788,14 @@ body {
    `.toggle-track`s, which `justify-content: space-between` pins to the right,
    the Reset button beside a hotkey field, and the Check for updates button at
    x=0. `padding-bottom` stays a separate declaration — that one is trailing air
-   under the last section, not room for a ring. */
+   under the last section, not room for a ring.
+   `scrollbar-gutter` is the third: this panel is the one whose scrollbar comes
+   and goes with the window height, and without a reserved gutter every toggle
+   track — all five pinned right by `justify-content: space-between` — steps
+   sideways by the bar's width the moment it appears. `stable` holds that width
+   open whether the bar is there or not. `.templates-scroll` and `.banners` are
+   left alone deliberately: a gutter is inset that is paid for permanently, and
+   neither of those pins anything to its inline end. */
 .settings-scroll {
   display: flex;
   flex: 1 1 auto;
@@ -1723,6 +1806,7 @@ body {
   padding-bottom: var(--s-tight);
   margin-inline: calc(-1 * var(--ring-reach));
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .hotkey-row {
