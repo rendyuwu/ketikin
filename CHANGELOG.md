@@ -67,6 +67,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Every setting in Settings is now the same kind of row.** A field stacked its label above its
+  control while a switch put the label beside it, and the Window section ran a stacked Theme select
+  straight into three switch rows — so one group changed shape halfway through with nothing to explain
+  the change. That mismatch, rather than the absence of boxes, is what still read as a form after the
+  section heads and corners were fixed. A field now takes the switch's shape: name on the left,
+  control against the right edge, hint or error on its own full-width line underneath. It returns
+  space rather than spending it, because the separate label line every field paid 27px for is gone —
+  a field row is 33px instead of 60px, six of them come to 161px, and the scrolling column at the
+  460x560 minimum window holds 983px of content where it held 1144px, against a 446px viewport. The
+  96px number inputs and the 140px select no longer leave 300 to 440px of dead gutter to their right;
+  their right edges line up with the switch tracks instead. The hotkey field, which used to stretch
+  the full width of the panel, is now sized to hold either of the two things it displays — its
+  accelerator, or `Press a key combination…` — so clicking into it no longer shoves itself and the
+  Reset button beside it 110px sideways. Field labels also go from muted grey to full-strength text,
+  which is what a switch's label always was: a muted **Theme** directly above a full-strength
+  **Minimize to tray** ranks two rows that are peers.
+  ([#33](https://github.com/rendyuwu/ketikin/issues/33))
+
 - **The panel reads less like a form.** Every control had a 4px corner and a 1px border, nothing on
   screen sat above anything else, and the Settings section heads were 11px uppercase, letterspaced,
   in the faintest grey in the palette. Each was defensible on its own; together they were a 2016 web
