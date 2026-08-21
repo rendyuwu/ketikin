@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The scrollbar is no longer the loudest thing on the screen.** Its thumb was filled with the token
+  that draws the boundary of a control, which is held at 3.4:1 so the edge of a button cannot be
+  missed — a value the scrollbar inherited by accident of naming rather than by decision. In Settings
+  that put a permanently visible bar at 3.4:1 down the full height of a panel whose content is
+  deliberately quiet, because the section list always overflows a 700px window. The thumb now has a
+  token of its own, translucent rather than solid, so it tints whatever surface it is over: 1.46:1 at
+  rest and 2.11:1 while the pointer is over the list (1.59:1 and 2.69:1 on dark) — above the app's
+  quietest divider, well below its faintest text. It is drawn as a 4px pill inside a 10px hit area,
+  so it stays thin to look at and full width to drag; hiding it was considered and rejected, since
+  that costs both the only sign that a list continues below the fold and pointer-dragging as a way to
+  scroll. Settings also holds the bar's width open whether or not it is showing, so its five switches
+  no longer step sideways when the window is resized past the point where the list overflows. Fixing
+  this turned up two further bugs in the old rule, both now gone: `scrollbar-width: thin` was
+  declared on `body` and does not inherit, so it reached no scroll container at all, and setting
+  `scrollbar-color` makes current Chromium ignore `::-webkit-scrollbar` rules — so on Windows the app
+  had been drawing a full-width native scrollbar rather than the narrow one the stylesheet described.
+  ([#20](https://github.com/rendyuwu/ketikin/issues/20))
+
 - **Clicking into the box no longer draws a black rectangle around it.** One rule set the focus
   indicator for the whole app — a 2px ring in near-black, offset 2px clear of whatever it surrounded —
   which is correct on a filled button and wrong on anything you type into. The compose canvas carries
