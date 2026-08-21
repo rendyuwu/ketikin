@@ -28,6 +28,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   contrast mode gets the outline back rather than nothing, and no ratio already recorded in the
   stylesheet moved. ([#21](https://github.com/rendyuwu/ketikin/issues/21))
 
+- **Focus rings are no longer cut off at the edges of Settings and Templates.** Both panels scroll, and
+  a scroll container clips what is inside it: `overflow-y: auto` computes `overflow-x` to `auto` as
+  well, and the ring is drawn 2px outside the control it marks. Five controls sit flush against that
+  edge — all five switches and the Reset button beside a hotkey field on the right, Check for updates on
+  the left, the Delete button on a template row on the right, and New template in the empty state on the
+  left — so each of them showed three sides of a ring instead of four. Both containers now hold 4px
+  open, exactly the distance the ring reaches, and hand that width straight back to the panel, so
+  nothing inside moves: every control's edge lands on the pixel it landed on before and no horizontal
+  scrollbar appears. The one thing that does move is the scrollbar, 4px nearer the window edge, which
+  gains it 4px of clearance from the content it used to sit against.
+  ([#29](https://github.com/rendyuwu/ketikin/issues/29))
+
+- **Tab can no longer escape the delete confirmation while the delete is running.** Both of its buttons
+  are disabled for as long as the request is in flight, and a browser blurs a control the moment it is
+  disabled — so focus fell to the document body, outside the dialog, where the dialog's own key handling
+  never saw a keystroke. Tab then walked into the panel behind the scrim, and Escape stopped cancelling.
+  Focus is now held on the dialog itself for the duration, and Tab is swallowed while there is nothing
+  inside it to move to. ([#29](https://github.com/rendyuwu/ketikin/issues/29))
+
 ### Changed
 
 - **The panel reads less like a form.** Every control had a 4px corner and a 1px border, nothing on
@@ -50,6 +69,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   teleporting. The boundary of every control is still its own 3:1 stroke — no shadow stands in for a
   border — and no contrast ratio recorded in the stylesheet moved.
   ([#22](https://github.com/rendyuwu/ketikin/issues/22))
+
+- **The cadence slider is focused on its thumb rather than boxed.** It was the last control still
+  wearing the app-wide ring the change above replaced everywhere else, and the worst fit for it: a 2px
+  near-black rectangle around the full width of an 18px-tall control whose visible part is a 2px
+  hairline. The mark now goes where the state is — the 12px thumb, which is the part the arrow keys move
+  and the only part carrying a value — as a 2px ring held 2px clear of the dot, which is the same
+  clearance and the same weight the ring spends everywhere else, bent around a circle instead of a box.
+  Nothing moves: it is drawn as a shadow, so the row keeps its height.
+  ([#29](https://github.com/rendyuwu/ketikin/issues/29))
 
 ## [0.2.0] - 2026-08-20
 
