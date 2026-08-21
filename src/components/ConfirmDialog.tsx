@@ -22,9 +22,26 @@ export function ConfirmDialog({
   const titleId = useId();
   const messageId = useId();
 
+  /**
+   * Both buttons are `disabled` while a delete is in flight, and the browser
+   * blurs a control the moment it is disabled — so focus fell to `<body>`,
+   * outside `.overlay`, where neither the Tab trap nor the Escape handler below
+   * ever sees a keystroke. Parking focus on the dialog keeps both working; that
+   * is what `tabIndex={-1}` on the container is for.
+   *
+   * Keyed on `busy` rather than run once on mount, which also covers the way
+   * back: a delete that fails leaves the dialog up with its buttons live again,
+   * and focus belongs on Cancel rather than on the container it was parked on.
+   *
+   * The parked container draws the app's focus ring, and only on the path where
+   * that is right: Chromium carries `:focus-visible` across a programmatic
+   * focus from whatever held it, so a delete started with the keyboard rings
+   * the dialog and one started with the mouse does not.
+   */
   useEffect(() => {
-    cancelButton.current?.focus();
-  }, []);
+    if (busy) dialog.current?.focus();
+    else cancelButton.current?.focus();
+  }, [busy]);
 
   // Escape cancels; Tab stays inside the dialog.
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
@@ -38,7 +55,13 @@ export function ConfirmDialog({
     const focusable = dialog.current?.querySelectorAll<HTMLButtonElement>(
       "button:not([disabled])",
     );
-    if (!focusable || focusable.length === 0) return;
+    // Nothing inside is focusable: both buttons are disabled while `busy`.
+    // Without swallowing the key, Tab walks out of the dialog and into the
+    // panel behind the scrim — the one place a modal must not let it go.
+    if (!focusable || focusable.length === 0) {
+      event.preventDefault();
+      return;
+    }
 
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
@@ -62,6 +85,7 @@ export function ConfirmDialog({
         aria-labelledby={titleId}
         aria-describedby={messageId}
         ref={dialog}
+        tabIndex={-1}
       >
         <h2 className="dialog-title" id={titleId}>
           {title}
