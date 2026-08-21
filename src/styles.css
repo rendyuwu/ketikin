@@ -141,7 +141,12 @@
 
   /* Not the accent: a near-white ring drawn on a brass button measures 1.79:1
      and simply is not there. See the note on `outline-offset` in the base
-     section, which is what makes this value work. */
+     section, which is what makes this value work.
+     It is also the colour a text control's own edge takes while focused, and
+     the compose hairline's while that surface holds focus — the same value,
+     drawn as weight on a boundary that is already there rather than as a ring
+     around one. Still `var(--text)`, which is why neither dark block carries an
+     entry for it: it resolves through the palette they already redeclare. */
   --focus: var(--text);
 
   --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -354,13 +359,56 @@ body {
   /* Load-bearing, not spacing polish. --focus is --text, and a near-white ring
      drawn directly on the brass Start button would be 1.79:1 — invisible on the
      one control most likely to be reached by keyboard. Offset by 2px the ring
-     lands on --bg instead, where it is 15.1:1. Removing this does not loosen
-     the layout, it deletes the focus indicator on every filled control. */
+     lands on --bg instead, where it is 15.1:1 on dark and 17.2:1 on light.
+     Removing this does not loosen the layout, it deletes the focus indicator on
+     every filled control. Four text controls and the compose surface opt out
+     below; everything else in the app depends on this rule. */
   outline-offset: 2px;
 }
 
 :focus:not(:focus-visible) {
   outline: none;
+}
+
+/* The one shape that does not work on a text surface. A ring drawn 2px clear of
+   a control it never touches is right on a filled button and wrong on a field
+   that already carries a 1px --control-edge boundary — two concentric
+   rectangles, which is where the "square" reading came from — and worst of all
+   on the borderless compose canvas, where it boxed the whole screen on the
+   app's most common action.
+   Same colour, drawn as weight instead: the control's own edge goes to --focus
+   and an inset 1px band doubles it, so the boundary reads 2px while focused,
+   inside the corner --r-control already gives it, with no layout shift and no
+   second rectangle. Measured, --control-edge to --focus is a 5.0:1 change on
+   light and 4.4:1 on dark, and the focused edge is 17.2:1 against --bg (15.1:1
+   dark) and 15.9:1 against --bg-sunken (13.9:1 dark).
+   Inward rather than outward is not a taste call, it is the only version that
+   survives the layout. `.settings-scroll` computes `overflow-x` to `auto` from
+   its `overflow-y` — see the note on `.template-use`, which dodges the same
+   trap — it has no inline padding, and neither `.section` nor `.field` adds
+   any, so every field in Settings sits flush against that clip edge and a
+   box-shadow, unlike an outline, is clipped by an ancestor's overflow. The
+   outward halo this replaced was also measured and dropped on its own merits:
+   at 14% alpha it composites to 1.33:1 on light and 1.42:1 on dark, and
+   --border — the quietest divider in the app — is 1.34:1, so it decorated the
+   state without carrying it.
+   `.hotkey` keys off `:focus`, not `:focus-visible`, and that is deliberate:
+   focus on that control *is* capture, since it suspends the global hotkeys and
+   starts swallowing keystrokes in `onFocus`, and Chromium does not match
+   `:focus-visible` on a button reached by pointer — so the one control where
+   the state matters most would have been the one control that never showed it.
+   The other two keep `:focus-visible`, so the set of states that show an
+   indicator is exactly what it was and only the shape changed.
+   `.compose-input` opts out entirely and is marked on its parent's hairline.
+   Everything else keeps the ring above and has to: a button, a tab, the toggle
+   track, a template row, the cadence slider, a link and an icon button have no
+   edge of their own to thicken. */
+.input:focus-visible,
+.textarea:focus-visible,
+.hotkey:focus {
+  outline: none;
+  border-color: var(--focus);
+  box-shadow: inset 0 0 0 1px var(--focus);
 }
 
 /* For text that has to be spoken but not drawn — the unit inside a number
@@ -1088,8 +1136,9 @@ body {
    --s-group above, and it is already doing exactly that job. A second line just
    below it would read as a mistake. Full bleed so it lines up with the header's,
    with the gutter put back as padding so the text itself stays on the panel's
-   own left edge — and so the textarea's focus ring lands inside the window
-   rather than under `.content`'s `overflow: hidden`. */
+   own left edge. That hairline is also where this surface's focus lands — see
+   the rule below — which is what keeps the indicator off `.compose-input`
+   itself and out from under `.content`'s `overflow: hidden`. */
 .compose {
   position: relative;
   display: flex;
@@ -1099,6 +1148,28 @@ body {
   margin-inline: calc(-1 * var(--s-edge));
   padding-inline: var(--s-edge);
   border-bottom: 1px solid var(--border);
+}
+
+/* Focus, and the only mark this surface gets. The bottom border goes to --focus
+   and an inset 1px band above it doubles the line, so a 1px divider reads 2px
+   while the canvas holds focus: weight as well as colour, which is what a
+   borderless surface owes a reader who cannot rely on hue. A wider border could
+   not deliver it — that would move the footer by a pixel on every click into the
+   box. Measured, the line goes from --border's 1.34:1 against --bg at rest to
+   17.2:1 focused on light and 15.1:1 on dark. Inset, so `.content`'s
+   `overflow: hidden` has nothing to clip; `.compose` has no vertical padding, so
+   the band lands directly above the border rather than anywhere else.
+   `:focus-within` rather than `:has(.compose-input:focus-visible)`: the only
+   focusable child is a textarea and Chromium matches `:focus-visible` on a text
+   field however it was reached, so the two select identically here — and this
+   one needs no `:has()`.
+   The brass caret argued for on `.compose-input` below is the second half of the
+   signal and deliberately not the whole of it: a caret disappears while a
+   selection is up, and a blinking insertion point marks where text will land
+   rather than what holds focus. */
+.compose:focus-within {
+  border-bottom-color: var(--focus);
+  box-shadow: inset 0 -1px 0 var(--focus);
 }
 
 .compose-input {
@@ -1122,6 +1193,13 @@ body {
      cannot sit alongside the run state competing for a glance the way a
      coloured control would. */
   caret-color: var(--accent);
+}
+
+/* The ring is not deleted, it is relocated: `.compose:focus-within` above draws
+   it on the hairline this panel already owns. Removing this rule puts a 2px
+   near-black rectangle back around the entire canvas. */
+.compose-input:focus-visible {
+  outline: none;
 }
 
 /* Set on the line the caret sits on, at the compose surface's own size, so the
@@ -1595,6 +1673,16 @@ body {
   cursor: default;
 }
 
+/* Later in the file than the focus rule in the base section, deliberately: both
+   selectors are (0,2,0), so source order is the only tiebreak, and this one
+   winning is the behaviour we want — an invalid field keeps its red edge while
+   focused, and focus is still marked by the inset band, which this rule does not
+   touch. Two properties, two states, both readable at once, no third colour
+   invented. The two rules are ~1200 lines apart: move either and check the other.
+   Note the invalid state is not focus-scoped. `error` in HotkeyInput is a prop
+   (`validationErrors ?? hotkeyErrors`) and outlives blur, so a field can be
+   invalid and unfocused as well as both at once; the band covers all four
+   combinations without a fifth rule. */
 .hotkey[aria-invalid="true"] {
   border-color: var(--danger);
 }
@@ -1721,5 +1809,23 @@ body {
   .saved-flash {
     animation: none;
     opacity: 1;
+  }
+}
+
+/* ====================================================== forced colours == */
+
+/* Forced-colours modes drop box-shadow entirely and force every border to one
+   system colour — which is both of the mechanisms the focus rules above use, so
+   there the outline they switched off is the only indicator left and it has to
+   come back. No colour is named: the UA supplies its own, and naming one would
+   be overridden anyway. WebKitGTK does not implement this query and ignores the
+   block; WebView2, where high contrast actually ships, does not. */
+@media (forced-colors: active) {
+  .input:focus-visible,
+  .textarea:focus-visible,
+  .hotkey:focus,
+  .compose-input:focus-visible {
+    outline: 2px solid;
+    outline-offset: 2px;
   }
 }
