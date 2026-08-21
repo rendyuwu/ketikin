@@ -149,6 +149,15 @@
      entry for it: it resolves through the palette they already redeclare. */
   --focus: var(--text);
 
+  /* How far the global ring reaches past a control's border box: the 2px
+     `outline-width` plus the 2px `outline-offset` in the base section, added up
+     once so the scroll containers that have to leave room for it are not each
+     carrying a bare 4. Change either half of that ring and this changes with
+     it. Its only consumers are `.templates-scroll` and `.settings-scroll`,
+     whose `overflow-y` computes `overflow-x` to `auto` and would otherwise clip
+     the ring off any control flush against their inline edge. */
+  --ring-reach: 4px;
+
   --font-ui: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo,
@@ -382,13 +391,17 @@ body {
    second rectangle. Measured, --control-edge to --focus is a 5.0:1 change on
    light and 4.4:1 on dark, and the focused edge is 17.2:1 against --bg (15.1:1
    dark) and 15.9:1 against --bg-sunken (13.9:1 dark).
-   Inward rather than outward is not a taste call, it is the only version that
-   survives the layout. `.settings-scroll` computes `overflow-x` to `auto` from
-   its `overflow-y` — see the note on `.template-use`, which dodges the same
-   trap — it has no inline padding, and neither `.section` nor `.field` adds
-   any, so every field in Settings sits flush against that clip edge and a
-   box-shadow, unlike an outline, is clipped by an ancestor's overflow. The
-   outward halo this replaced was also measured and dropped on its own merits:
+   Inward rather than outward is a taste call now, and was not when this rule
+   landed: `.settings-scroll` computes `overflow-x` to `auto` from its
+   `overflow-y`, it had no inline padding then, and neither `.section` nor
+   `.field` adds any — so every field in Settings sat flush against that clip
+   edge, and a box-shadow, unlike an outline, is clipped by an ancestor's
+   overflow. That container now holds --ring-reach of padding open for the ring
+   the toggles and buttons beside these fields still carry, so an outward band
+   would fit. It stays inward on the reading above: on a control that already
+   owns a 1px edge, a second boundary further out is the pair of concentric
+   rectangles this shape exists to remove. The outward halo this replaced was
+   also measured and dropped on its own merits:
    at 14% alpha it composites to 1.33:1 on light and 1.42:1 on dark, and
    --border — the quietest divider in the app — is 1.34:1, so it decorated the
    state without carrying it.
@@ -1460,12 +1473,29 @@ body {
   flex: 1 1 auto;
 }
 
+/* The padding and the margin are one declaration, not two: `overflow-y: auto`
+   computes `overflow-x` to `auto` as well, and a scroll container clips its
+   content at the scrollport — so a control sitting flush against this box's
+   inline edge gets the outward half of its focus ring cut off. Two do here: the
+   Delete icon button on the right of a row, and the New template button at x=0
+   in the empty state. `padding-inline` moves the clip edge out by exactly the
+   ring's reach and the negative margin gives that width back to the panel, so
+   nothing inside moves by a pixel — measured, every control's border box lands
+   on the same coordinate before and after, and `scrollWidth` still equals
+   `clientWidth`, so no horizontal scrollbar opens.
+   The one thing it does move is the scrollbar, which lives at this box's border
+   edge and therefore ends up 4px nearer the window edge — a 16px gutter becomes
+   12px, and the thumb gains 4px of separation from the content it used to butt
+   against. `.compose` uses the same trick in the other direction, to reach
+   *past* its gutter rather than to hold one open. */
 .templates-scroll {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   gap: var(--s-group);
   min-height: 0;
+  padding-inline: var(--ring-reach);
+  margin-inline: calc(-1 * var(--ring-reach));
   overflow-y: auto;
 }
 
@@ -1515,10 +1545,11 @@ body {
 
 /* The global ring is offset outwards by 2px, which is load-bearing on filled
    controls (see the note at `:focus-visible`). Here the row spans the full width
-   of `.templates-scroll`, and that container's `overflow-y: auto` computes
-   `overflow-x` to `auto` as well — so an outward ring would either clip or open
-   a horizontal scrollbar. Inset, on a row with no fill of its own, it reads as
-   the row highlight it is. */
+   of `.templates-scroll`, whose `overflow-y: auto` computes `overflow-x` to
+   `auto` as well — that container now leaves --ring-reach of padding, so an
+   outward ring would no longer clip, but it would draw a rectangle 2px clear of
+   a band that already runs the full width of the panel. Inset, on a row with no
+   fill of its own, it reads as the row highlight it is. */
 .template-use:focus-visible {
   outline-offset: -2px;
 }
@@ -1638,13 +1669,21 @@ body {
   color: var(--text-muted);
 }
 
+/* Same pair, same reason, and the fuller argument is on `.templates-scroll`.
+   Three kinds of control are flush against this box's inline edges: all five
+   `.toggle-track`s, which `justify-content: space-between` pins to the right,
+   the Reset button beside a hotkey field, and the Check for updates button at
+   x=0. `padding-bottom` stays a separate declaration — that one is trailing air
+   under the last section, not room for a ring. */
 .settings-scroll {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   gap: var(--s-band);
   min-height: 0;
+  padding-inline: var(--ring-reach);
   padding-bottom: var(--s-tight);
+  margin-inline: calc(-1 * var(--ring-reach));
   overflow-y: auto;
 }
 
