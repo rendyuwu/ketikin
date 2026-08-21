@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Clicking into the box no longer draws a black rectangle around it.** One rule set the focus
+  indicator for the whole app — a 2px ring in near-black, offset 2px clear of whatever it surrounded —
+  which is correct on a filled button and wrong on anything you type into. The compose canvas carries
+  no border and fills the Type panel, so focusing it, the single most common action in the app, boxed
+  the entire screen; and the delay, countdown, newline, theme, hotkey and template fields each got
+  that ring a second boundary out from the 1px edge they already had, which is the two concentric
+  squares. Those fields now gain weight rather than a ring: the control's own edge goes to
+  full-strength text and an inset band doubles it, so the boundary reads 2px while focused, sits
+  inside the control's own 6px corner, moves nothing by a pixel, and cannot be clipped by the scroll
+  container it sits in — a halo drawn outward would have been cut flat on the left of every field in
+  Settings and on both sides of the two hotkey fields. The compose surface is marked on the hairline
+  under it instead, which goes from the app's quietest divider at 1.34:1 to 17.2:1, and from one pixel
+  to two, alongside the brass caret it already had. Buttons, tabs, switches, template rows, the
+  cadence slider, links and icon buttons keep the ring exactly as it was — on the brass Start button a
+  ring drawn without that offset measures 1.79:1 and is not there at all. Focused edges measure
+  17.2:1 on light and 15.1:1 on dark, the change from the resting edge is 5.0:1 and 4.4:1, high
+  contrast mode gets the outline back rather than nothing, and no ratio already recorded in the
+  stylesheet moved. ([#21](https://github.com/rendyuwu/ketikin/issues/21))
+
 ### Changed
 
 - **The panel reads less like a form.** Every control had a 4px corner and a 1px border, nothing on
