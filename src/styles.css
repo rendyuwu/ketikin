@@ -83,9 +83,9 @@
   --text: #191917;
   --text-muted: #5e5e58;
   /* Pinned to the WCAG AA floor, not picked by eye. This token carries every
-     field hint, placeholder, section label and the hotkey capture prompt, all
-     rendered well under 18px, where the minimum is 4.5:1 — so lightening it by
-     a shade to "calm it down" puts most of the explanatory copy in the app back
+     field hint, placeholder, field suffix, cadence stop name and the hotkey
+     capture prompt, all rendered well under 18px, where the minimum is 4.5:1 —
+     so lightening it by a shade to "calm it down" puts the explanatory copy back
      under the line. The values it replaced did exactly that: #8d8d86 measured
      3.34:1 on white and #7c7c75 measured 4.23:1 on the dark --bg. */
   --text-faint: #6f6f67; /* 4.93:1 on --bg, 4.57:1 on --bg-sunken */
@@ -123,6 +123,22 @@
 
   --overlay-hover: rgb(0 0 0 / 7%);
   --scrim: rgb(0 0 0 / 35%);
+
+  /* One elevation step, and only the dialog takes it: a modal over a scrim is the
+     one thing in this app that is genuinely above something else. It never carries
+     a boundary — SC 1.4.11 asks 3:1 of the visual information that identifies a
+     control, a shadow cannot be measured that way, and --border-strong stays on
+     the dialog exactly where it was.
+     Buttons were considered and rejected. On dark a black shadow against --bg is
+     nothing you can see, and neither fill that could stand in for it works:
+     --bg-hover is the fill `.btn:hover` already sets, so a button raised to it
+     would have nowhere left to go under the pointer, and --control-edge measures
+     2.79:1 against it — back under the 3:1 that token exists to hold. --bg-sunken
+     keeps the edge at its recorded 3.13:1 but is only 1.088:1 against --bg, and
+     every button inside a template form or the storage panel already sits on it,
+     so the lift would be invisible in exactly the places it was wanted. */
+  --shadow-raise: 0 1px 2px rgb(0 0 0 / 5%);
+
   /* Not the accent: a near-white ring drawn on a brass button measures 1.79:1
      and simply is not there. See the note on `outline-offset` in the base
      section, which is what makes this value work. */
@@ -136,7 +152,7 @@
   /* Type scale — five steps, and nothing between them. The six sizes this
      replaced lived inside a 4px range (11, 12, 12.5, 13, 14, 15); the 12 vs
      12.5 pair was invisible on screen but real in the CSS, so it drifted.
-       11px / 600 / +0.07em / uppercase   section labels, eyebrows
+       11px / 600                         section labels, eyebrows
        11px / 400 / mono                  shortcut hint inside a button
        13px / 400                         body, controls, hints
        15px / 600                         panel titles, template names
@@ -144,7 +160,10 @@
                                           empty-state line in sans
        22px / 500 / tabular               duration estimate
        34px / 500 / tabular               countdown digit
-     Weights: 400, 500, 600. Nothing else. */
+     Weights: 400, 500, 600. Nothing else. The section-label step used to carry
+     +0.07em and `text-transform: uppercase` as well; both are gone, and there is
+     no letterspacing left anywhere in this file. See the note on
+     `.section-title`. */
 
   /* Layout rhythm, named by intent rather than by size. The scale this replaced
      used one value (12px) for the panel, for sections, for rows and for control
@@ -161,9 +180,40 @@
      set by the frame, not by how the content is grouped. */
   --s-edge: 16px;
 
-  --r-control: 4px; /* inputs, buttons, tabs — crisper, more instrument-like */
-  --r-surface: 10px; /* dialogs and sunken panels */
+  /* Corners taken from the app's own icon rather than picked by eye. The keycap in
+     icon.svg is a 12-unit square at `rx="2.5"` — 20.8% of its side — and the
+     controls here are 28.85px tall small and 32.85px standard (a 13px/1.45 line
+     box plus its padding and border), which at that ratio is 6.0px and 6.8px. 6px
+     is the whole pixel inside that range, so a button's corner and the icon's
+     corner are one decision instead of two.
+     The ratio is deliberately not applied per control: it would give five radii,
+     from 4.6px on the 22px icon button to 22.9px on the template body, and a
+     radius per height is the same drift the type scale above exists to prevent.
+     One family, and the icon button is knowingly rounder than the ratio asks.
+     The 4px this replaces was commented "crisper, more instrument-like" and it
+     was — but a 4px corner, a 1px border on every control and no elevation
+     anywhere read together as a web form rather than an instrument. */
+  --r-control: 6px; /* buttons, icon buttons, inputs, select, hotkey field, banner, result, template body */
+
+  /* Panels and dialogs, and this number comes from their own padding: all three
+     users carry --s-edge (16px), and a radius under that keeps the arc inside the
+     pad so no corner crowds the content it frames. 10px was fine beside a 4px
+     control and no longer reads as a different family beside a 6px one. */
+  --r-surface: 14px; /* .template-form, .storage, .dialog */
+
+  /* Colour: fills, borders, text, and the opacity fade on a template row's
+     actions. A fill can swap in 90ms and still read as instant. */
   --dur: 90ms;
+
+  /* Shape and position, which read as a jump at 90ms. The curve is front-loaded,
+     so most of the travel happens in the first third.
+     Two exclusions, both deliberate. `.rail-fill` keeps its `120ms linear`: that
+     width is driven by `typing://state`, coalesced to roughly 20 events a second,
+     so an eased 160ms transition would never reach its target and the rail would
+     lag the run it exists to report. `digit-swap` keeps its own 180ms — it is a
+     replay on remount tuned to a one-second tick, not a gesture. */
+  --dur-move: 160ms;
+  --ease-move: cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* `theme: 'system'` resolves here; 'dark'/'light' are pinned by the attribute
@@ -202,6 +252,7 @@
 
     --overlay-hover: rgb(255 255 255 / 9%);
     --scrim: rgb(0 0 0 / 55%);
+    --shadow-raise: none; /* --scrim at 55% black is already the dialog's lift here */
   }
 }
 
@@ -233,6 +284,7 @@
 
   --overlay-hover: rgb(255 255 255 / 9%);
   --scrim: rgb(0 0 0 / 55%);
+  --shadow-raise: none; /* --scrim at 55% black is already the dialog's lift here */
 }
 
 /* ================================================================ base == */
@@ -289,6 +341,9 @@ body {
   background: transparent;
 }
 
+/* The 4px is half the 8px width above, so the thumb is a pill — derived from the
+   shape the way `.toggle-track`'s radius is, not a copy of --r-control that was
+   left behind when that token moved to 6px. */
 ::-webkit-scrollbar-thumb {
   background: var(--control-edge);
   border-radius: 4px;
@@ -819,7 +874,10 @@ body {
   height: 14px;
   background: var(--bg);
   border-radius: 50%;
-  transition: transform var(--dur) ease;
+  /* The one thing in the app that moves rather than changing colour, so it is the
+     one consumer of --dur-move. At --dur the 12px of travel read as the thumb
+     teleporting between the two ends of the track. */
+  transition: transform var(--dur-move) var(--ease-move);
 }
 
 /* Graphite, not brass. A switch is a preference, not the live state of a run,
@@ -903,21 +961,37 @@ body {
   flex-direction: column;
 }
 
+/* Sentence case, in full-strength text. The words never changed — the JSX has
+   always said "Typing" — this rule was uppercasing them. 11px / 600 / +0.07em in
+   --text-faint was three quiet decisions stacking into one loud one, and it is
+   the case, the tracking and the faintest grey in the palette that date a panel,
+   not the label and not its size: a heading set in small caps in the lightest
+   grey available is what a 2016 web form looks like.
+   The size stays at 11px on purpose. 13px was tried and is worse — it lands on
+   top of `.toggle-label`, which is 13px in --text, leaving weight as the only
+   thing separating a section head from the rows inside it, and it puts the head
+   below `.template-name` at 15px / 600, so the largest, boldest text on the
+   Templates screen would be a data value. --text-muted was the other half-measure
+   and is not enough once the case and the tracking are gone: a heading that has
+   given up two signals needs the colour to do the ranking.
+   Still a flex row — the ::after below depends on it, and so does the Templates
+   head. */
 .section-title {
   display: flex;
   align-items: center;
   gap: var(--s-tight);
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text);
 }
 
-/* Hangs a hairline off the label across the rest of the panel, so TYPING /
-   WINDOW / HOTKEYS head a band instead of floating as the faintest text on the
-   screen. A pseudo-element rather than markup, which means `.template-form`'s
-   reuse of the class gets the rule for free. */
+/* Kept, for a slightly different reason than the one it was added for. The label
+   is no longer the faintest text on the screen and no longer needs rescuing from
+   floating, but the rule is still what says where a band starts, and there are
+   five of these in one scrolling column. It is also load-bearing in the Templates
+   head, where its own `flex: 1 1 auto` is the only thing pushing the New button
+   to the right edge — see the note there. A pseudo-element rather than markup,
+   which means `.template-form`'s reuse of the class gets the rule for free. */
 .section-title::after {
   content: "";
   flex: 1 1 auto;
@@ -1604,6 +1678,12 @@ body {
   background: var(--bg);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-surface);
+  /* Keeps the 14px corner from reading as a flat cut out of the scrim. Resolves
+     to `none` on dark, where the scrim at 55% black is already the lift — see the
+     token. `none` is legal here only because this is the sole consumer and nothing
+     composes a second shadow into the list; a second one would have to make the
+     dark value a transparent shadow instead. */
+  box-shadow: var(--shadow-raise);
 }
 
 .dialog-title {

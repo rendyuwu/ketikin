@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The panel reads less like a form.** Every control had a 4px corner and a 1px border, nothing on
+  screen sat above anything else, and the Settings section heads were 11px uppercase, letterspaced,
+  in the faintest grey in the palette. Each was defensible on its own; together they were a 2016 web
+  form rather than the instrument the rest of the design is aiming at. Corners are now derived rather
+  than picked: the app's icon is a keycap drawn as a 12-unit square at `rx="2.5"`, 20.8% of its side,
+  and a control in this app is between 29 and 33 pixels tall, which at that ratio is 6.0 to 6.8px —
+  so a button takes 6px, the whole pixel inside that range, and the app's corner and the icon's
+  corner are one decision instead of two. Panels and dialogs take 14px, which stays inside the 16px
+  padding they already carry. **Typing**, **Window**, **Hotkeys**, **Updates**, **Storage** and the
+  two heads in Templates are sentence case in full-strength text instead of small caps in the
+  lightest grey available — of everything here that is the single largest change in how old the panel
+  looks, and it is the treatment that dated it rather than the words or their size, so the size did
+  not move. The confirmation dialog now carries one step of elevation in light mode, which is the one
+  place in the app where something genuinely floats above something else; on dark the scrim already
+  does that job and a black shadow against a near-black background would not have been visible
+  anyway. And the switch thumb now travels over 160ms on a front-loaded curve rather than the 90ms
+  the app uses for colour, because a shape that moves as fast as a fill changes colour reads as
+  teleporting. The boundary of every control is still its own 3:1 stroke — no shadow stands in for a
+  border — and no contrast ratio recorded in the stylesheet moved.
+  ([#22](https://github.com/rendyuwu/ketikin/issues/22))
+
 ## [0.2.0] - 2026-08-20
 
 ### Added
