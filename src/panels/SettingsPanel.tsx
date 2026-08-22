@@ -238,7 +238,6 @@ export function SettingsPanel({
           <Field label="Start typing" htmlFor="hotkey-start">
             <HotkeyInput
               id="hotkey-start"
-              label="Start typing hotkey"
               value={settings.startHotkey}
               defaultValue={DEFAULT_SETTINGS.startHotkey}
               disabled={!settings.hotkeysEnabled}
@@ -251,7 +250,6 @@ export function SettingsPanel({
           <Field label="Stop typing" htmlFor="hotkey-stop">
             <HotkeyInput
               id="hotkey-stop"
-              label="Stop typing hotkey"
               value={settings.stopHotkey}
               defaultValue={DEFAULT_SETTINGS.stopHotkey}
               disabled={!settings.hotkeysEnabled}
