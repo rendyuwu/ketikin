@@ -23,6 +23,14 @@
 //!      mark for the whole run (countdown included) and lose it again on finish
 //!      and on the stop hotkey. On macOS check both a light and a dark menu bar,
 //!      since a lost template flag only shows on one of them.
+//!   5. on Windows, set the display to 150% scaling and compare the tray icon
+//!      (idle and mid-run) against 100%: both must look drawn rather than
+//!      resampled, and neither must change size when a run starts. Then change the
+//!      scaling with Ketikin already running, which is the path
+//!      `WindowEvent::ScaleFactorChanged` drives — see `crate::icons`.
+
+#[cfg(windows)]
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
@@ -58,6 +66,19 @@ const IDLE_BYTES: Option<&[u8]> = None;
 const RUN_BYTES: &[u8] = include_bytes!("../icons/tray-macos-template-run.png");
 #[cfg(not(target_os = "macos"))]
 const RUN_BYTES: &[u8] = include_bytes!("../icons/tray-run.png");
+
+/// What the tray icon was last *told* to show.
+///
+/// Deliberately not the typing engine's own state: this records what is on screen,
+/// and a redraw at a new size has to reproduce that rather than re-derive it.
+/// [`set_running`] is the only writer, so `RunGuard` is what keeps the two in step
+/// — the same thing that makes the mark itself trustworthy.
+///
+/// An atomic because the writer is a typing worker and the reader is the main
+/// thread handling a scale-factor event; a lock here would be one the main thread
+/// takes, which is the thing `AppState` forbids.
+#[cfg(windows)]
+static RUN_MARK_SHOWN: AtomicBool = AtomicBool::new(false);
 
 /// Emitted once at startup when the tray could not be created.
 ///
@@ -166,7 +187,9 @@ fn with_icon<R: tauri::Runtime>(
 /// Called exactly twice per run — once as the run is accepted, once when it
 /// finishes, is stopped, errors or panics — from the two ends of `typing`'s
 /// `RunGuard`, which is what makes the second call as certain as the terminal
-/// `typing://done` it sits beside. Deliberately *not* driven by `typing://state`:
+/// `typing://done` it sits beside. On Windows [`refresh_icon`] calls it again on a
+/// display-scale change, which is the one caller that is not a run boundary.
+/// Deliberately *not* driven by `typing://state`:
 /// that fires ~20 times a second and every swap here is a blocking round trip
 /// through the main thread, for a mark that only ever changes twice. Anything
 /// added to this function inherits that cost — do not move it into the keystroke
@@ -180,6 +203,11 @@ fn with_icon<R: tauri::Runtime>(
 /// Every failure is logged and swallowed. A tray icon left in the wrong state is
 /// cosmetic; a run that refuses to start or to stop because of one is not.
 pub fn set_running(app: &AppHandle, running: bool) {
+    // Before the early return below, so the record stands even on a session with
+    // no tray: if one is somehow built later, a redraw has to know what to draw.
+    #[cfg(windows)]
+    RUN_MARK_SHOWN.store(running, Ordering::Relaxed);
+
     // `None` means the tray never built (see `create`), so there is nothing to
     // mark and nothing to warn about — the failure was already reported at
     // startup through `tray://unavailable`.
@@ -206,6 +234,22 @@ pub fn set_running(app: &AppHandle, running: bool) {
     }
 }
 
+/// Redraw the tray icon from the size the notification area is now asking for.
+///
+/// Windows only, because it is the only platform where this module picks the tray
+/// artifact by size at all — `crate::icons` explains why, and owns the size itself.
+/// The state redrawn is whatever [`set_running`] last showed, not the engine's:
+/// this is a redraw, not a state change.
+///
+/// Called from the main thread on a scale-factor event, where `set_icon` runs
+/// inline instead of blocking on the event loop. Racing a run boundary can leave
+/// the icon a size behind for as long as it takes the next boundary to arrive,
+/// which is the same cosmetic-only failure `set_running` already swallows.
+#[cfg(windows)]
+pub fn refresh_icon(app: &AppHandle) {
+    set_running(app, RUN_MARK_SHOWN.load(Ordering::Relaxed));
+}
+
 /// Names a run state for a log line.
 fn label(running: bool) -> &'static str {
     if running {
@@ -225,6 +269,12 @@ fn label(running: bool) -> &'static str {
 /// there reads as a foreign object beside every other item, and no choice of
 /// colour fixes that.
 ///
+/// On Windows both states are picked by size instead, because the size the
+/// notification area draws at follows the display scale — 16px at 100% scaling, 24
+/// at 150% — and `crate::icons` holds both the rule and the rasters. Everything
+/// below is its fallback: an unknown size or a corrupt raster lands on the same
+/// artifacts every platform used before that module existed.
+///
 /// For the idle state everywhere else the bundled window icon is right and is
 /// already the correct artifact: `default_window_icon` resolves to the first PNG
 /// in `tauri.conf.json`'s icon list, `icons/32x32.png`, and on Windows to a
@@ -242,6 +292,15 @@ fn label(running: bool) -> &'static str {
 /// `None` only when there is no artifact at all for this state, which takes a
 /// bundle with no window icon. The caller leaves whatever is showing alone.
 fn artifact<R: tauri::Runtime>(app: &AppHandle<R>, running: bool) -> Option<(Image<'_>, bool)> {
+    // The `false` is the template flag, which only macOS reads and which therefore
+    // cannot matter in a Windows-only branch.
+    #[cfg(windows)]
+    {
+        if let Some(icon) = crate::icons::tray_icon(crate::icons::tray_icon_px(), running) {
+            return Some((icon, false));
+        }
+    }
+
     if let Some(bytes) = if running { Some(RUN_BYTES) } else { IDLE_BYTES } {
         // Decoded here rather than at build time because `Image` owns pixels, not
         // a PNG; the bytes themselves are embedded, so this cannot fail on a

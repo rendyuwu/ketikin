@@ -85,6 +85,12 @@ answer always wins.
 whether to rebind (so `Alt+K` → `alt+k` triggers a harmless rebind) and case-insensitively for the
 start-vs-stop duplicate rule.
 
+**`icons.rs` is Windows-only at runtime but compiled everywhere under `cfg(test)`** (`#[cfg(any(windows,
+test))]`), because its whole content is size arithmetic over embedded files and CI runs tests on Linux.
+Nothing outside `cfg(windows)` calls it. That also means `cargo check` on Linux does not compile the
+callers in `lib.rs` and `tray.rs`: to type-check those without a Windows box, temporarily swap
+`#[cfg(windows)]` for `#[cfg(all())]` in the three files and run `cargo clippy --all-targets`.
+
 `src-tauri/capabilities/default.json` keeps `core:default` deliberately and nothing else: the
 window, updater, process, opener and global-shortcut calls all happen in Rust, which bypasses the
 ACL entirely.
