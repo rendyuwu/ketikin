@@ -1195,8 +1195,9 @@ body {
    Templates screen would be a data value. --text-muted was the other half-measure
    and is not enough once the case and the tracking are gone: a heading that has
    given up two signals needs the colour to do the ranking.
-   Still a flex row — the ::after below depends on it, and so does the Templates
-   head. */
+   Still a flex row — the ::after below depends on it. The Templates head used
+   to as well, until #28 removed its label; six call sites are left and every
+   one of them is a heading over content it names. */
 .section-title {
   display: flex;
   align-items: center;
@@ -1209,10 +1210,14 @@ body {
 /* Kept, for a slightly different reason than the one it was added for. The label
    is no longer the faintest text on the screen and no longer needs rescuing from
    floating, but the rule is still what says where a band starts, and there are
-   five of these in one scrolling column. It is also load-bearing in the Templates
-   head, where its own `flex: 1 1 auto` is the only thing pushing the New button
-   to the right edge — see the note there. A pseudo-element rather than markup,
-   which means `.template-form`'s reuse of the class gets the rule for free. */
+   five of these in one scrolling column.
+   It no longer does a second job anywhere. `flex: 1 1 auto` used to be the only
+   thing pushing the Templates head's New button to the right edge, which made
+   this rule load-bearing in a place where nothing was being named; #28 deleted
+   that label and the head states its own alignment now, so every instance left
+   is a line hanging off a word, which is the whole of what it is for.
+   A pseudo-element rather than markup, which means `.template-form`'s reuse of
+   the class gets the rule for free. */
 .section-title::after {
   content: "";
   flex: 1 1 auto;
@@ -1678,19 +1683,25 @@ body {
 
 /* ===================================================== templates panel == */
 
+/* One control, at the right edge. This row used to hold an eyebrow reading
+   "Templates" as well, and that eyebrow was doing the positioning: its
+   `.section-title::after` hairline grew to fill the row, so the button was
+   pushed right as a side effect of the label having a rule after it and there
+   was no `justify-content` here. With the label gone (#28) the alignment has to
+   be stated, and this states it in one property on the row that already exists.
+   The alternatives both cost more: `margin-left: auto` needs a modifier on a
+   `.btn` shared by fifteen other call sites, and dropping the row to make the
+   button a direct child of `.panel` needs `align-self` anyway, because a column
+   flex container stretches its children and the button would run full width.
+   No hairline replaces the one that left. `.header`'s bottom border is 20px
+   above this row, measured, and is the app's only chrome-to-content divider; a
+   second line that close to it would be the one rule in the file with nothing
+   to introduce, and the list below already draws its own dividers between rows.
+   `align-items` and `gap` are gone with the second child they were written
+   for. */
 .templates-head {
   display: flex;
-  align-items: center;
-  gap: var(--s-tight);
-}
-
-/* The eyebrow's own `::after` rule is what pushes the New button to the right,
-   which is why there is no `justify-content` here: it gives the head a left
-   anchor and its separator in one element, the same way a Settings section
-   label does. Without the grow the title would size to its text and the rule
-   would be a stub. */
-.templates-head .section-title {
-  flex: 1 1 auto;
+  justify-content: flex-end;
 }
 
 /* The padding and the margin are one decision, not two: `overflow-y: auto`
