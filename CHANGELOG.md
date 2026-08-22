@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Settings is one list at one rhythm, and the row under the pointer lights up.** Giving fields the
+  same row shape as the switches ([#33](https://github.com/rendyuwu/ketikin/issues/33)) left the old
+  spacing rule behind it: 8px between two consecutive switches, 20px between everything else. That
+  pair was written when a field was a stacked form control and a switch was a row, where 8px said
+  "these three switches are one group" and 20px kept a field's label line clear of the one above it.
+  Once every setting was a row it read as two rhythms inside one list — and the Window section runs
+  one straight into the other, a select at 20px followed by three switches at 8px. Every row now sits
+  at the tighter of the two. Grouping was never this distance's job and has not been for a while: the
+  section eyebrow names the group, its hairline draws the top of it, and 32px separates one section
+  from the next, so a fourth signal was only spending height. Measured in the built frontend at the
+  460x560 minimum window, the scroll column goes from 983px to 907px — 2.20 viewports of content down
+  to 2.03. The 8px between two rows is now inside them as padding rather than between them as margin,
+  which changes no coordinate but means a row's box covers its whole share of the column, and that is
+  what the highlight paints: hovering a switch fills the full width of the panel and the next band
+  begins exactly where that one ends. Only the switches take it. A switch is a `<label>`, so its whole
+  row flips it; a field row is not clickable outside its own control, and lighting it up would promise
+  a target that is not there. ([#35](https://github.com/rendyuwu/ketikin/issues/35))
+
 - **The Windows titlebar and tray icon are now picked for the size Windows is about to draw them
   at.** Leading `icon.ico` with its 64px entry ([#24](https://github.com/rendyuwu/ketikin/issues/24))
   made every size a downscale rather than an upscale, but only 100% and 200% scaling are reached
@@ -34,6 +52,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   StatusNotifier host. ([#37](https://github.com/rendyuwu/ketikin/issues/37))
 
 ### Fixed
+
+- **A screen reader now reads which shortcut a hotkey field is bound to.** The two hotkey buttons in
+  Settings carried an `aria-label` of "Start typing hotkey" and "Stop typing hotkey", and an
+  accessible name taken from an attribute replaces the element's content — so the accelerator drawn
+  inside the button, the one thing a reader needs from that control, was the one thing it never said.
+  Dropping the attribute is not enough on its own: the field's own `<label>` names a `<button>` too
+  and a label outranks the button's content, which leaves "Start typing" and still no accelerator.
+  The button now names itself from both, by pointing at the field label and at the span holding the
+  value, so it reads as "Start typing Alt+K". That also holds through capture, when the value is
+  hidden to keep the button from resizing: a hidden element referenced by name still contributes its
+  text, so the name does not flicker to "Press a key combination…" and back on every focus. The
+  prompt is a description instead, announced when focus arrives — which on this control is the moment
+  capture begins. ([#35](https://github.com/rendyuwu/ketikin/issues/35))
 
 - **The Windows titlebar and tray icon are no longer a small raster blown up.** `icon.ico` ships six
   purpose-drawn sizes, but only one of them ever reaches the running window: Tauri's build-time

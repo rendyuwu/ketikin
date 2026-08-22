@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { acceleratorFromEvent, formatAccelerator, hasModifier } from "../lib/format";
 import { acquireCapture, releaseCapture } from "../lib/hotkeyCapture";
 
 type HotkeyInputProps = {
+  /** Also what the enclosing `Field` points its label at, as `<id>-label`. */
   id: string;
-  label: string;
   value: string;
   defaultValue: string;
   onCapture: (accelerator: string) => void;
@@ -17,9 +17,10 @@ type HotkeyInputProps = {
 
 const NEEDS_MODIFIER = "Hold Ctrl, Alt, Shift or Super together with the key.";
 
+const CAPTURE_HINT = "Press a key combination to change this shortcut.";
+
 export function HotkeyInput({
   id,
-  label,
   value,
   defaultValue,
   onCapture,
@@ -31,6 +32,8 @@ export function HotkeyInput({
   const [localError, setLocalError] = useState<string | null>(null);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const held = useRef(false);
+  const valueId = useId();
+  const hintId = useId();
 
   const release = useCallback(() => {
     if (!held.current) return;
@@ -81,11 +84,31 @@ export function HotkeyInput({
   return (
     <>
       <div className="hotkey-row">
+        {/* The name is the field's label plus the accelerator on the button,
+            named by reference rather than written out. It used to be an
+            `aria-label` of "Start typing hotkey", and an accessible name from
+            an attribute replaces the element's content — so the one thing a
+            reader needs from this control, the shortcut it is currently bound
+            to, was the one thing it never said.
+            Content alone does not fix it. The enclosing `Field`'s `<label for>`
+            names a `<button>` too, and a label wins over the subtree: dropping
+            the attribute leaves "Start typing" and still no accelerator.
+            Measured in Chromium, all four states: attribute "Start typing
+            hotkey", content "Start typing", this "Start typing Alt+K".
+            Pointing at `.hotkey-value` also survives capture, when that span is
+            at `visibility: hidden` to hold its grid cell open. A hidden node
+            referenced directly by `aria-labelledby` still contributes its text,
+            which is what keeps the name from changing to the prompt and back
+            every time the button takes focus. */}
         <button
           type="button"
           id={id}
           className="hotkey"
-          aria-label={label}
+          aria-labelledby={`${id}-label ${valueId}`}
+          // Focus on this control is capture, so this is announced at exactly
+          // the moment it becomes true — which is why the prompt does not need
+          // to be live, and must not be part of the name.
+          aria-describedby={hintId}
           aria-invalid={shown ? true : undefined}
           disabled={disabled}
           onKeyDown={onKeyDown}
@@ -104,14 +127,27 @@ export function HotkeyInput({
               change its width — see `.hotkey-swap`. Focus on this control is
               capture, so that swap happens on every focus. */}
           <span className="hotkey-swap">
-            <span className="hotkey-value" data-off={capturing || undefined}>
+            <span
+              className="hotkey-value"
+              id={valueId}
+              data-off={capturing || undefined}
+            >
               {formatAccelerator(value)}
             </span>
-            <span className="hotkey-prompt" data-off={!capturing || undefined}>
+            {/* Drawn, not spoken: it is the visible half of the description
+                below, and the same instruction twice is worse than once. */}
+            <span
+              className="hotkey-prompt"
+              data-off={!capturing || undefined}
+              aria-hidden="true"
+            >
               Press a key combination…
             </span>
           </span>
         </button>
+        <span className="visually-hidden" id={hintId}>
+          {CAPTURE_HINT}
+        </span>
         {value !== defaultValue ? (
           <button
             type="button"

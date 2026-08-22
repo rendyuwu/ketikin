@@ -944,13 +944,45 @@ body {
   min-height: 72px;
 }
 
+/* The padding is the distance to the next row, moved inside the box. Two rows
+   in a section now meet with no margin between them (see `.section > * + *`),
+   so `--s-hair` top and bottom on each of them adds up to the same --s-tight of
+   whitespace a margin would have left — and the row's own box, which is what
+   the hover band paints, covers the whole pitch instead of a strip through the
+   middle of it.
+   Inline it is the same padding-plus-negative-margin `.settings-scroll` uses
+   for the focus rings, in the other direction: the border box grows out to that
+   container's padding edge, which is as far as a band can go before the
+   scrollport clips it, while the content stays on the coordinates it had. The
+   toggle track is pinned to the content edge by `space-between` and does not
+   move by a pixel. `.field` deliberately does not carry the inline half — it
+   has no band to bleed, and geometry nothing paints is dead weight. */
 .toggle {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--s-tight);
-  padding: 2px 0;
+  padding-block: var(--s-hair);
+  padding-inline: var(--ring-reach);
+  margin-inline: calc(-1 * var(--ring-reach));
   cursor: pointer;
+}
+
+/* The row you can click is the row that lights up. A `.toggle` is a `<label>`,
+   so its whole box — label, description and the dead space between them and the
+   track — flips the switch; a `.field` row is not clickable outside its own
+   control and its label, so lighting it up would promise a target that is not
+   there. That is the whole reason this is on one row type and not on both, and
+   it is not the two grammars #33 closed: every setting is still one row, and
+   this says which of them answer to a click.
+   No transition. The three motion moments in this app are the countdown digit,
+   the toggle thumb and the template actions fading in; a highlight that has to
+   keep up with a pointer moving down a list is not a fourth.
+   `:not([data-disabled])` because a disabled switch is inert — the attribute is
+   unused in the panel today, and this rule is the reason it must stay correct
+   if that changes. */
+.toggle:hover:not([data-disabled]) {
+  background: var(--bg-hover);
 }
 
 .toggle[data-disabled] {
@@ -1067,11 +1099,21 @@ body {
    `minmax(0, 1fr)` rather than `1fr` for the label column: a long label wraps
    inside its half instead of pushing the control past the panel's right edge,
    which at 460px it otherwise does. */
+/* `padding-block` for the same reason `.toggle` carries it: the gap between two
+   rows lives inside the rows now. The two row types have to spend it the same
+   way or the list has two pitches again the moment either token moves.
+   `row-gap` is `--s-hair` rather than the column's `--s-tight` because the two
+   distances stopped being the same measurement once the rows closed up. A hint
+   or an error is prose belonging to the row above it, and with 8px of
+   whitespace to the next row it needs to sit nearer than that to say so — it
+   used to have 20px on the other side doing that work for it. */
 .field {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--s-tight);
+  column-gap: var(--s-tight);
+  row-gap: var(--s-hair);
+  padding-block: var(--s-hair);
 }
 
 /* `display: contents`, so the slot marks which children are the control without
@@ -1178,20 +1220,43 @@ body {
   background: var(--border);
 }
 
-/* Adjacent-sibling margins rather than `gap`, because three of the distances
-   inside a section differ and `gap` is a single value: the eyebrow belongs to
-   the group it labels rather than sitting between two, consecutive switches are
-   one group and not three, and everything else is group-to-group. Declared
-   after `.section-title` so no `margin` on a child's own class can win on
-   source order. */
+/* One distance, where there used to be two. --s-group between everything and
+   --s-tight between two switches was written when a field was a stacked form
+   control and a switch was a row: 8px said "these three switches are one
+   group", and 20px kept a field's label line clear of the one above it. Now
+   that every setting is a row (#33), the same pair reads as two rhythms inside
+   one list — 8px down the tray switches, 20px everywhere else, in a section
+   that runs one straight into the other.
+   The list wins, at the tighter of the two. Grouping is not this distance's job
+   and has not been for a while: the eyebrow names the group, its hairline draws
+   the top of it, and --s-band holds 32px between sections. Spending 20px
+   between rows as well would say it a fourth time, and would hand back part of
+   what collapsing the fields recovered — the argument that a section's rows are
+   unrelated settings is true of the tray switches too, and they have read
+   correctly at 8px all along.
+   Adjacent-sibling margins rather than `gap` because two distances still
+   differ, and both are prose attached to the row above rather than another row:
+   `.group-note`, which names --s-hair on its own rule, and a field's hint or
+   error, which is --s-hair of `row-gap` inside the field. Declared after
+   `.section-title` so no `margin` on a child's own class can win on source
+   order. */
 .section > * + * {
-  margin-top: var(--s-group);
+  margin-top: var(--s-tight);
 }
 
-.section > .section-title + *,
-.section > .toggle + .toggle,
-.section > .group-note + .toggle {
-  margin-top: var(--s-tight);
+/* Two rows meet flush, because each of them already carries --s-hair of padding
+   on both edges: 4 + 4 is the --s-tight above, moved inside the boxes so the
+   hover band on a switch spans its whole share of the column and the next
+   band starts where it ends, with no dead strip between them. Rows land on the
+   same coordinates either way — the choice is only about where the whitespace
+   is owned, not how much of it there is. The rule is separate rather than
+   folded into the one above because the section also holds things that are not
+   rows: a note, a version line, a button row, the storage box. Those keep the
+   margin.
+   `:is()` takes the specificity of its most specific argument, so this is
+   (0,3,0) against (0,1,0) and wins wherever it is declared. */
+.section > :is(.field, .toggle) + :is(.field, .toggle) {
+  margin-top: 0;
 }
 
 /* ============================================================== banner == */
@@ -1813,12 +1878,16 @@ body {
   }
 }
 
-/* Sits at group-internal distance from the switch above it so it reads as a
-   caveat on that pair rather than as a separate row in the section. This used
-   to need a negative margin to claw back the container's uniform gap; now it
-   just names the distance it wants and overrides `.section > * + *`. */
+/* Sits nearer the switch above it than the switch below, so it reads as a
+   caveat on that pair rather than as a separate row in the section. It has not
+   actually said that until now: at --s-tight it sat 8px from both neighbours,
+   which is equidistant, and only its colour was carrying the attachment. With
+   the rows closed up to --s-tight it can — 4px plus the switch's own bottom
+   padding is 8px of whitespace above, against 8px plus the next switch's top
+   padding below. Still just names the distance it wants and overrides
+   `.section > * + *` on source order. */
 .group-note {
-  margin-top: var(--s-tight);
+  margin-top: var(--s-hair);
   font-size: 13px;
   line-height: 1.45;
   color: var(--text-muted);
