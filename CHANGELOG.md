@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The Windows titlebar and tray icon are now picked for the size Windows is about to draw them
+  at.** Leading `icon.ico` with its 64px entry ([#24](https://github.com/rendyuwu/ketikin/issues/24))
+  made every size a downscale rather than an upscale, but only 100% and 200% scaling are reached
+  *cleanly* from 64: the drawing is on a 16-unit grid, so 64 halves exactly to 32 and to 16 and lands
+  every edge back on a pixel boundary. At 150% — an ordinary Windows laptop setting — the titlebar and
+  the notification area want 24px, which was a 2.67:1 resample of that buffer, while the file had held
+  a purpose-drawn 24px entry all along that nothing at runtime could reach. Ketikin now embeds the
+  whole `.ico`, parses its entry table back out at startup and on every `ScaleFactorChanged` (which
+  also fires when the window moves to a monitor with a different scale), and hands each surface an
+  entry chosen for it. The two surfaces get different rules, because they are read differently: a tray
+  icon is drawn in the notification area and nowhere else, so it simply takes the exact size or the
+  next one up, but the window's icon is the only one `tao` sets — `ICON_BIG` is never assigned and the
+  window class registers a null icon — so whether Alt+Tab and the taskbar button fall back to it
+  cannot be observed from inside the process. The window rule therefore only accepts an entry that is
+  at least the large size Windows asks for *and* an exact integer multiple of the small one, which
+  makes every swap an improvement on both surfaces or no swap at all. Against this file that means
+  150% moves to the 48px entry — exact 2:1 for the titlebar's 24 and an exact match for Alt+Tab's 48 —
+  and 100%, 125%, 175% and 200% keep the 64px entry they were already served correctly by. 125% and
+  175% cannot be fixed by any raster: 20 and 28 pixels are 1.25 and 1.75 grid units each, so no render
+  of this drawing is crisp there. The run-state tray mark ships at 16, 24, 32 and 48 to match, so the
+  icon does not soften when a run starts. All of this is Windows-only; macOS resolves its own sizes out
+  of the `.icns` and the menu bar template, and on Linux the tray artifact belongs to the
+  StatusNotifier host. ([#37](https://github.com/rendyuwu/ketikin/issues/37))
+
 ### Fixed
 
 - **The Windows titlebar and tray icon are no longer a small raster blown up.** `icon.ico` ships six

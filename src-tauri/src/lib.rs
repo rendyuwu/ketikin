@@ -10,6 +10,11 @@
 
 pub mod error;
 pub mod hotkeys;
+/// Windows-only at runtime — nothing outside `cfg(windows)` calls into it — but
+/// compiled under `cfg(test)` everywhere so its size rules stay covered by a
+/// `cargo test` on Linux, which is where they are usually run.
+#[cfg(any(windows, test))]
+pub mod icons;
 pub mod settings;
 pub mod storage;
 pub mod templates;
@@ -444,6 +449,110 @@ fn apply_window_settings(app: &AppHandle, settings: &Settings) {
     }
 }
 
+/// Hand Windows an icon drawn for the size it is about to draw it at, for both
+/// surfaces that follow the display scale.
+///
+/// Windows only: it is the one platform that hands the whole app a single raster
+/// and then scales it per monitor (`icons` explains the mechanism). macOS resolves
+/// its own sizes out of the `.icns` and the menu bar template, and on Linux the
+/// tray artifact belongs to the StatusNotifier host.
+///
+/// Called at startup *before* the tray is built, so the icon the tray is created
+/// with is already the right size, and again from every
+/// `WindowEvent::ScaleFactorChanged` — which is where `window_scale` comes from,
+/// since the event carries the authoritative factor and startup has no event to
+/// read one out of. Both are the main thread, where `set_icon` runs inline rather
+/// than blocking on the event loop.
+#[cfg(windows)]
+fn apply_display_scale(app: &AppHandle, window_scale: Option<f64>) {
+    apply_window_icon(app, window_scale);
+    apply_tray_icon_scale(app);
+}
+
+/// Give the window the `.ico` entry that suits its scale factor.
+///
+/// Skipped when it is already carrying that entry: `set_icon` is a visible swap on
+/// Windows, and a scale event fires for a monitor move as well as a settings
+/// change, so most of them resolve to the icon already showing.
+#[cfg(windows)]
+fn apply_window_icon(app: &AppHandle, window_scale: Option<f64>) {
+    let Some(window) = app.get_webview_window("main") else {
+        log::warn!("icons: main window is gone; leaving its icon alone");
+        return;
+    };
+
+    let scale = match window_scale {
+        Some(scale) => scale,
+        None => match window.scale_factor() {
+            Ok(scale) => scale,
+            Err(err) => {
+                log::warn!("icons: could not read the window scale factor: {err}");
+                return;
+            }
+        },
+    };
+
+    let Some(px) = icons::window_entry_px(scale) else {
+        log::warn!("icons: no usable icon.ico entry for {scale} scaling");
+        return;
+    };
+
+    if px == icons::window_icon_px() {
+        return;
+    }
+
+    let Some(icon) = icons::app_icon(px) else {
+        return;
+    };
+
+    match window.set_icon(icon) {
+        Ok(()) => {
+            icons::set_window_icon_px(px);
+            log::info!("icons: window icon is now the {px}px entry ({scale} scaling)");
+        }
+        Err(err) => log::warn!("icons: could not set the {px}px window icon: {err}"),
+    }
+}
+
+/// Point the tray at the size the notification area is asking for.
+///
+/// The scale comes from the primary monitor rather than from the window, and that
+/// is the whole reason this is not folded into [`apply_window_icon`]: the
+/// notification area lives on the primary taskbar, so a window dragged onto a
+/// second monitor with its own scale factor changes the titlebar's size and not the
+/// tray's.
+#[cfg(windows)]
+fn apply_tray_icon_scale(app: &AppHandle) {
+    let scale = match app.primary_monitor() {
+        Ok(Some(monitor)) => monitor.scale_factor(),
+        // Both arms leave the recorded size exactly as it was rather than guessing
+        // at one, so a failure at startup keeps the tray on the bundled artifact —
+        // what it drew before any of this existed — and the next scale event gets
+        // another go at it.
+        Ok(None) => {
+            log::warn!("icons: no primary monitor; leaving the tray icon alone");
+            return;
+        }
+        Err(err) => {
+            log::warn!(
+                "icons: could not read the primary monitor ({err}); leaving the tray icon alone"
+            );
+            return;
+        }
+    };
+
+    let px = icons::small_icon_px(scale);
+    if px == 0 || px == icons::tray_icon_px() {
+        return;
+    }
+
+    // Recorded before the redraw, because the redraw reads it back through
+    // `tray::artifact`.
+    icons::set_tray_icon_px(px);
+    tray::refresh_icon(app);
+    log::info!("icons: tray icon is now drawn for {px}px ({scale} scaling)");
+}
+
 fn close_to_tray(app: &AppHandle) -> bool {
     let Some(state) = app.try_state::<AppState>() else {
         return false;
@@ -503,6 +612,16 @@ fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
         // Same safety net: if the user clicks away mid-capture, the frontend's
         // blur handler may never run.
         WindowEvent::Focused(false) => resume_hotkeys_off_thread(app),
+        // The only notice Windows gives that its icons are about to be drawn at a
+        // different size. Fires for a scaling change in Settings and for a move to
+        // a monitor with a different scale factor, so both surfaces are
+        // re-evaluated: the window from the event's own factor, the tray from the
+        // primary monitor's. On other platforms the variant is left to the
+        // catch-all arm, since nothing there picks an icon by size.
+        #[cfg(windows)]
+        WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+            apply_display_scale(app, Some(*scale_factor));
+        }
         // There is no portable "about to minimize" hook, so minimize-to-tray is
         // implemented after the fact: the window minimizes normally and is then
         // hidden. On Windows and macOS that means a brief minimize animation
@@ -597,6 +716,13 @@ fn setup(app: &AppHandle, storage: Storage) {
         tray_available: AtomicBool::new(false),
         tray_message: Mutex::new(None),
     });
+
+    // Before the tray is built, deliberately: `tray::create` reads the size
+    // recorded here to pick the artifact it starts with, so doing this afterwards
+    // would show a wrongly scaled icon until the first scale event that never
+    // comes.
+    #[cfg(windows)]
+    apply_display_scale(app, None);
 
     // A tray failure disables close-to-tray and minimize-to-tray for this run;
     // without it there would be no way to restore or quit the app.
