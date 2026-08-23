@@ -292,3 +292,41 @@ Windows it determines whether an elevation mismatch explains "nothing gets typed
 **Ask whether they ran it elevated**, if the report involves missing settings or templates on
 Windows. An elevated and a non-elevated launch can resolve to different data directories on
 locked-down machines, which presents exactly as data loss and is not.
+
+**"The icon did not change after the update" on Windows is usually the shell icon cache, not the
+bundle.** Any release that changes the app icon will produce this report, and it arrives looking
+like a bundling failure. It is worth knowing how to separate the two before you go and inspect
+`.ico` entries.
+
+Windows resolves the icon along two paths, and only one of them is cached:
+
+| Surface | Source | Cached by the shell |
+| --- | --- | --- |
+| Tray, titlebar, taskbar button of a running window, Alt+Tab | the runtime window icon, from the binary | no |
+| Explorer, Start Menu, desktop and pinned taskbar shortcuts | the icon embedded in the `.exe` as a resource | yes, in `iconcache_*.db` |
+
+So **ask which surfaces are stale, and specifically about the titlebar of a running window.** New
+tray and titlebar with an old shortcut icon is the signature of a stale cache: the two uncached
+surfaces already have the new icon, which means the binary carries it, which means the bundle is
+fine. Send them to
+[the Troubleshooting entry](../README.md#troubleshooting) — `ie4uinit.exe -show`, re-pin, and check
+for two installs — and close it there.
+
+A stale titlebar or tray icon is the real report. Nothing caches those, so if they are wrong the
+running binary is wrong, and the problem belongs with the runtime window icon rather than with the
+shell: see the per-scale icon selection in `src-tauri/src/icons.rs` and its callers. Confirm the
+version and the download, since a stale titlebar on an old binary is just an install that did not
+actually update.
+
+Two things that mimic the cache case and are neither:
+
+- **Two installs.** `installMode: "both"` means a per-machine and a per-user install can coexist. A
+  shortcut left by the older install points at the older executable, so its old icon is correct for
+  what it launches and survives every cache rebuild. Ask what **Installed apps** lists.
+- **One `.ico`, two consumers.** Both Windows surfaces come out of `icons/icon.ico`, so they cannot
+  disagree about *which* drawing shipped — but they read the file differently. Windows picks the
+  resource entry closest to the size it needs, while Tauri's build-time codegen decodes only entry 0
+  and throws the rest away, so whatever leads the file is the runtime icon at every display scale.
+  An `.ico` whose first entry is the wrong one therefore gives correct shortcut icons and a wrong
+  titlebar and tray — the mirror image of the cache case, and a real bundling fault. The ordering
+  rule and the test that enforces it are documented in `src-tauri/icons/README.md`.
