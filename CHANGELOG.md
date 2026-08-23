@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The empty Templates panel offers one way to make a template, not two.** With nothing saved, the
+  panel put two controls for the same action on screen: `New` in the head row and `New template`
+  under the empty state's explanation. Both called the same handler, and they agreed on nothing else
+  — 127.9px apart top to top at the 460x560 minimum window, one at x=380 and one at x=16, 28.8px
+  against 32.8px tall, small-and-quiet against primary. Two accessible names for one action is also
+  what a `New` locator tripped over back in [#28](https://github.com/rendyuwu/ketikin/issues/28). The
+  empty state keeps its button, because it is the one standing under the sentence that says what a
+  template is and that is the shape a first-run screen wants; the head row is not rendered at all
+  while the empty state is up, rather than merely emptied, since `.panel` is a gapped flex column and
+  a childless row still spends 48.9px of a 560px-tall window. The prose and its button move up by
+  exactly that much and the scroll column grows from 436px to 485px. Every other state keeps the head
+  and is unchanged to the pixel — measured in the built frontend at 460x560 and 560x700, with a list
+  showing, with the form open, and during the initial list read, `New` is still at the right edge in
+  the column the row's Edit and Delete buttons sit in. That last case is why the switch waits on the
+  read finishing: the empty state does not draw until the list is in, so hiding the head any earlier
+  would open the panel with no way in and then grow a row under it. The cost, knowingly taken, is
+  that saving the first template moves the control 364px right and 79px up, from the empty state's
+  position to the head's. ([#41](https://github.com/rendyuwu/ketikin/issues/41))
+
 - **The Templates panel no longer names itself twice.** A `Templates` head sat about 56 pixels below
   a tab strip whose selected tab also read `Templates`, and after the section-head pass
   ([#22](https://github.com/rendyuwu/ketikin/issues/22)) the two were the same colour, one weight
