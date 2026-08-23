@@ -468,6 +468,32 @@ install it. Download the new package and install it the way you installed the ol
 to the AppImage if you would rather updates be automatic. See
 [Linux: only the AppImage self-updates](#linux-only-the-appimage-self-updates).
 
+**The taskbar still shows the old Ketikin icon after an update.**
+Windows reads the icon for Explorer, the Start Menu, the desktop and pinned taskbar shortcuts out of
+the installed executable and then caches it in `iconcache_*.db`. An update replaces the executable
+without necessarily invalidating that cache, so the old icon can outlive the version it came from.
+
+Before trying to fix it, confirm that is what you are looking at, because the same complaint can
+mean a genuinely wrong build. Launch Ketikin and check the tray icon and the titlebar of its window.
+Those are drawn from the running binary and are never cached. If they show the new icon while the
+shortcuts show the old one, the cache is stale and the sections below fix it. If the tray and
+titlebar are stale *too*, nothing is cached about them — the icon really is wrong in the build, and
+that is worth [reporting](https://github.com/rendyuwu/ketikin/issues) with your version and how you
+installed it.
+
+For a stale cache, in order:
+
+- Rebuild the shell's icon cache. Run `ie4uinit.exe -show` from Win+R or a command prompt. No reboot
+  and no sign-out is needed.
+- If a pinned taskbar item is the one still showing the old icon, unpin it and pin it again from the
+  installed executable or the Start Menu entry. A pinned item keeps its own reference to an icon and
+  is not necessarily refreshed along with the cache.
+- Check whether you have two installs. The installer offers a per-machine and a per-user install and
+  both can be present at the same time, listed separately under **Installed apps**. A shortcut left
+  behind by the older one still points at the older executable, so its icon is not stale at all — it
+  is the correct icon for the binary that shortcut launches, and it comes back after every cache
+  rebuild. Uninstall whichever copy you do not want.
+
 **No tray icon appears, or closing the window quits instead of hiding it.**
 The tray icon needs the desktop to provide a system-tray host — on Linux, a StatusNotifier host.
 Not every desktop ships one; bare GNOME without an AppIndicator extension is the usual case.
