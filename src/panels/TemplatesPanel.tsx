@@ -100,6 +100,24 @@ export function TemplatesPanel({ templates, onUse }: TemplatesPanelProps) {
     }
   }
 
+  /**
+   * The head's New and the empty state's New template were always one action
+   * with two labels: same handler, 127.9px apart top to top at the minimum
+   * window, one `.btn--small` at the right edge and one `.btn--primary` at the
+   * left. Exactly one of them is on screen now, and this is the switch.
+   *
+   * The empty state's button wins the empty case because it is the one sitting
+   * under the sentence that explains what a template is, which is the shape a
+   * first-run screen wants; the head keeps every other state — list showing,
+   * form open, and the initial read. The cost, accepted knowingly, is that the
+   * control moves to the head row when the first template is saved.
+   *
+   * `!loading` is what keeps the head's button up during that read: the empty
+   * state waits for the list before it draws, so without it the panel would
+   * open with no way in and then grow a row once the read came back empty.
+   */
+  const showEmpty = !loading && items.length === 0 && !draft;
+
   return (
     <div className="panel templates-panel">
       {/*
@@ -109,17 +127,24 @@ export function TemplatesPanel({ templates, onUse }: TemplatesPanelProps) {
         wordmark under a titlebar that already carries one. What is left is the
         one thing the row was doing that nothing else does: putting New at the
         right edge, in the column the row actions below it sit in.
+
+        Dropping the whole row in the empty state rather than just the button
+        inside it: `.panel` is a gapped flex column, so a childless row still
+        spends 48.9px measured — its own height plus the gap below it — in the
+        one window size where that height is scarcest.
       */}
-      <div className="templates-head">
-        <button
-          type="button"
-          className="btn btn--small btn--icon"
-          onClick={openNew}
-        >
-          <PlusIcon size={12} />
-          New
-        </button>
-      </div>
+      {showEmpty ? null : (
+        <div className="templates-head">
+          <button
+            type="button"
+            className="btn btn--small btn--icon"
+            onClick={openNew}
+          >
+            <PlusIcon size={12} />
+            New
+          </button>
+        </div>
+      )}
 
       {error ? (
         <Banner tone="error" onDismiss={dismissError}>
@@ -177,12 +202,17 @@ export function TemplatesPanel({ templates, onUse }: TemplatesPanelProps) {
           </form>
         ) : null}
 
-        {!loading && items.length === 0 && !draft ? (
+        {showEmpty ? (
           <div className="empty">
             <p>
               Save text you paste often. Templates load straight into the Type
               tab.
             </p>
+            {/*
+              The only way into the form while the list is empty, so it keeps
+              the fuller label and the primary emphasis — there is nothing left
+              for it to compete with.
+            */}
             <button
               type="button"
               className="btn btn--primary btn--icon"

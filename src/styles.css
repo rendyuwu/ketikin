@@ -1698,7 +1698,10 @@ body {
    second line that close to it would be the one rule in the file with nothing
    to introduce, and the list below already draws its own dividers between rows.
    `align-items` and `gap` are gone with the second child they were written
-   for. */
+   for, and the row itself is gone in the empty state (#41) — the empty state's
+   own button is the single way into the form there, so this row would hold a
+   duplicate of it. Nothing in the rule depends on that; it is one child's worth
+   of alignment either way. */
 .templates-head {
   display: flex;
   justify-content: flex-end;
