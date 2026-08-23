@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The Templates panel no longer names itself twice.** A `Templates` head sat about 56 pixels below
+  a tab strip whose selected tab also read `Templates`, and after the section-head pass
+  ([#22](https://github.com/rendyuwu/ketikin/issues/22)) the two were the same colour, one weight
+  apart — neither told you anything the other did not. That is the argument the `.header` comment
+  already makes about a wordmark under a titlebar that carries one, applied a level down in a window
+  whose minimum height is 560px. The head row stays, because it was quietly doing a second job: the
+  eyebrow's trailing hairline grew to fill the row, and that grow was the only thing pushing the New
+  button to the right edge. The row now states its own alignment in one property, so New still lands
+  in the same column as the Edit and Delete buttons on the rows below it. No hairline replaces the
+  one that went with the label: the header's bottom border is 20px above the row and is the app's
+  only chrome-to-content divider, so a second line that close to it would have had nothing to
+  introduce. Measured in the built frontend at 460x560 and 560x700, in the list state and the empty
+  state, every coordinate is unchanged — the row's height was always set by the button, not the
+  label, so this buys back no vertical space and was never about the pixels. The five Settings heads
+  and the template form's own `New template` / `Edit template` head are untouched and keep their
+  hairlines; that last one names something that appears nowhere else on screen, which is what the
+  class is for. ([#28](https://github.com/rendyuwu/ketikin/issues/28))
+
 - **Settings is one list at one rhythm, and the row under the pointer lights up.** Giving fields the
   same row shape as the switches ([#33](https://github.com/rendyuwu/ketikin/issues/33)) left the old
   spacing rule behind it: 8px between two consecutive switches, 20px between everything else. That

@@ -102,8 +102,15 @@ export function TemplatesPanel({ templates, onUse }: TemplatesPanelProps) {
 
   return (
     <div className="panel templates-panel">
+      {/*
+        No heading. The selected tab two rows up already says "Templates", and
+        a head that repeats it spends a row of a 560px-minimum window saying
+        nothing new — the same argument the `.header` comment makes about a
+        wordmark under a titlebar that already carries one. What is left is the
+        one thing the row was doing that nothing else does: putting New at the
+        right edge, in the column the row actions below it sit in.
+      */}
       <div className="templates-head">
-        <h2 className="section-title">Templates</h2>
         <button
           type="button"
           className="btn btn--small btn--icon"
