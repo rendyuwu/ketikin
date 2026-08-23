@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-23
+
 ### Changed
 
 - **The empty Templates panel offers one way to make a template, not two.** With nothing saved, the
@@ -87,6 +89,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   icon does not soften when a run starts. All of this is Windows-only; macOS resolves its own sizes out
   of the `.icns` and the menu bar template, and on Linux the tray artifact belongs to the
   StatusNotifier host. ([#37](https://github.com/rendyuwu/ketikin/issues/37))
+
+- **Every setting in Settings is now the same kind of row.** A field stacked its label above its
+  control while a switch put the label beside it, and the Window section ran a stacked Theme select
+  straight into three switch rows — so one group changed shape halfway through with nothing to explain
+  the change. That mismatch, rather than the absence of boxes, is what still read as a form after the
+  section heads and corners were fixed. A field now takes the switch's shape: name on the left,
+  control against the right edge, hint or error on its own full-width line underneath. It returns
+  space rather than spending it, because the separate label line every field paid 27px for is gone —
+  a field row is 33px instead of 60px, six of them come to 161px, and the scrolling column at the
+  460x560 minimum window holds 983px of content where it held 1144px, against a 446px viewport. The
+  96px number inputs and the 140px select no longer leave 300 to 440px of dead gutter to their right;
+  their right edges line up with the switch tracks instead. The hotkey field, which used to stretch
+  the full width of the panel, is now sized to hold either of the two things it displays — its
+  accelerator, or `Press a key combination…` — so clicking into it no longer shoves itself and the
+  Reset button beside it 110px sideways. Field labels also go from muted grey to full-strength text,
+  which is what a switch's label always was: a muted **Theme** directly above a full-strength
+  **Minimize to tray** ranks two rows that are peers.
+  ([#33](https://github.com/rendyuwu/ketikin/issues/33))
+
+- **The panel reads less like a form.** Every control had a 4px corner and a 1px border, nothing on
+  screen sat above anything else, and the Settings section heads were 11px uppercase, letterspaced,
+  in the faintest grey in the palette. Each was defensible on its own; together they were a 2016 web
+  form rather than the instrument the rest of the design is aiming at. Corners are now derived rather
+  than picked: the app's icon is a keycap drawn as a 12-unit square at `rx="2.5"`, 20.8% of its side,
+  and a control in this app is between 29 and 33 pixels tall, which at that ratio is 6.0 to 6.8px —
+  so a button takes 6px, the whole pixel inside that range, and the app's corner and the icon's
+  corner are one decision instead of two. Panels and dialogs take 14px, which stays inside the 16px
+  padding they already carry. **Typing**, **Window**, **Hotkeys**, **Updates**, **Storage** and the
+  two heads in Templates are sentence case in full-strength text instead of small caps in the
+  lightest grey available — of everything here that is the single largest change in how old the panel
+  looks, and it is the treatment that dated it rather than the words or their size, so the size did
+  not move. The confirmation dialog now carries one step of elevation in light mode, which is the one
+  place in the app where something genuinely floats above something else; on dark the scrim already
+  does that job and a black shadow against a near-black background would not have been visible
+  anyway. And the switch thumb now travels over 160ms on a front-loaded curve rather than the 90ms
+  the app uses for colour, because a shape that moves as fast as a fill changes colour reads as
+  teleporting. The boundary of every control is still its own 3:1 stroke — no shadow stands in for a
+  border — and no contrast ratio recorded in the stylesheet moved.
+  ([#22](https://github.com/rendyuwu/ketikin/issues/22))
+
+- **The cadence slider is focused on its thumb rather than boxed.** It was the last control still
+  wearing the app-wide ring the focus-shape pass
+  ([#21](https://github.com/rendyuwu/ketikin/issues/21)) replaced everywhere else, and the worst fit
+  for it: a 2px near-black rectangle around the full width of an 18px-tall control whose visible part
+  is a 2px hairline. The mark now goes where the state is — the 12px thumb, which is the part the
+  arrow keys move and the only part carrying a value — as a 2px ring held 2px clear of the dot, which
+  is the same clearance and the same weight the ring spends everywhere else, bent around a circle
+  instead of a box. Nothing moves: it is drawn as a shadow, so the row keeps its height.
+  ([#29](https://github.com/rendyuwu/ketikin/issues/29))
 
 ### Fixed
 
@@ -176,56 +227,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never saw a keystroke. Tab then walked into the panel behind the scrim, and Escape stopped cancelling.
   Focus is now held on the dialog itself for the duration, and Tab is swallowed while there is nothing
   inside it to move to. ([#29](https://github.com/rendyuwu/ketikin/issues/29))
-
-### Changed
-
-- **Every setting in Settings is now the same kind of row.** A field stacked its label above its
-  control while a switch put the label beside it, and the Window section ran a stacked Theme select
-  straight into three switch rows — so one group changed shape halfway through with nothing to explain
-  the change. That mismatch, rather than the absence of boxes, is what still read as a form after the
-  section heads and corners were fixed. A field now takes the switch's shape: name on the left,
-  control against the right edge, hint or error on its own full-width line underneath. It returns
-  space rather than spending it, because the separate label line every field paid 27px for is gone —
-  a field row is 33px instead of 60px, six of them come to 161px, and the scrolling column at the
-  460x560 minimum window holds 983px of content where it held 1144px, against a 446px viewport. The
-  96px number inputs and the 140px select no longer leave 300 to 440px of dead gutter to their right;
-  their right edges line up with the switch tracks instead. The hotkey field, which used to stretch
-  the full width of the panel, is now sized to hold either of the two things it displays — its
-  accelerator, or `Press a key combination…` — so clicking into it no longer shoves itself and the
-  Reset button beside it 110px sideways. Field labels also go from muted grey to full-strength text,
-  which is what a switch's label always was: a muted **Theme** directly above a full-strength
-  **Minimize to tray** ranks two rows that are peers.
-  ([#33](https://github.com/rendyuwu/ketikin/issues/33))
-
-- **The panel reads less like a form.** Every control had a 4px corner and a 1px border, nothing on
-  screen sat above anything else, and the Settings section heads were 11px uppercase, letterspaced,
-  in the faintest grey in the palette. Each was defensible on its own; together they were a 2016 web
-  form rather than the instrument the rest of the design is aiming at. Corners are now derived rather
-  than picked: the app's icon is a keycap drawn as a 12-unit square at `rx="2.5"`, 20.8% of its side,
-  and a control in this app is between 29 and 33 pixels tall, which at that ratio is 6.0 to 6.8px —
-  so a button takes 6px, the whole pixel inside that range, and the app's corner and the icon's
-  corner are one decision instead of two. Panels and dialogs take 14px, which stays inside the 16px
-  padding they already carry. **Typing**, **Window**, **Hotkeys**, **Updates**, **Storage** and the
-  two heads in Templates are sentence case in full-strength text instead of small caps in the
-  lightest grey available — of everything here that is the single largest change in how old the panel
-  looks, and it is the treatment that dated it rather than the words or their size, so the size did
-  not move. The confirmation dialog now carries one step of elevation in light mode, which is the one
-  place in the app where something genuinely floats above something else; on dark the scrim already
-  does that job and a black shadow against a near-black background would not have been visible
-  anyway. And the switch thumb now travels over 160ms on a front-loaded curve rather than the 90ms
-  the app uses for colour, because a shape that moves as fast as a fill changes colour reads as
-  teleporting. The boundary of every control is still its own 3:1 stroke — no shadow stands in for a
-  border — and no contrast ratio recorded in the stylesheet moved.
-  ([#22](https://github.com/rendyuwu/ketikin/issues/22))
-
-- **The cadence slider is focused on its thumb rather than boxed.** It was the last control still
-  wearing the app-wide ring the change above replaced everywhere else, and the worst fit for it: a 2px
-  near-black rectangle around the full width of an 18px-tall control whose visible part is a 2px
-  hairline. The mark now goes where the state is — the 12px thumb, which is the part the arrow keys move
-  and the only part carrying a value — as a 2px ring held 2px clear of the dot, which is the same
-  clearance and the same weight the ring spends everywhere else, bent around a circle instead of a box.
-  Nothing moves: it is drawn as a shadow, so the row keeps its height.
-  ([#29](https://github.com/rendyuwu/ketikin/issues/29))
 
 ## [0.2.0] - 2026-08-20
 
@@ -479,6 +480,7 @@ accept clipboard paste.
   `.msi`), **Linux x64** (`.AppImage`, `.deb`, and `.rpm`), and **macOS** on both Intel x64 and
   Apple Silicon arm64 (`.dmg`).
 
-[Unreleased]: https://github.com/rendyuwu/ketikin/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/rendyuwu/ketikin/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/rendyuwu/ketikin/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rendyuwu/ketikin/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/rendyuwu/ketikin/releases/tag/v0.1.0
