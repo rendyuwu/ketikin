@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-11
+
 ### Fixed
 
 - **The update banner is whole again at the default window size.** The banner row was declared
@@ -580,7 +582,8 @@ accept clipboard paste.
   `.msi`), **Linux x64** (`.AppImage`, `.deb`, and `.rpm`), and **macOS** on both Intel x64 and
   Apple Silicon arm64 (`.dmg`).
 
-[Unreleased]: https://github.com/rendyuwu/ketikin/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/rendyuwu/ketikin/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/rendyuwu/ketikin/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/rendyuwu/ketikin/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/rendyuwu/ketikin/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rendyuwu/ketikin/compare/v0.1.0...v0.2.0
