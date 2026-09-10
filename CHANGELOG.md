@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-11
+
 ### Changed
 
 - **The window goes down to 200x160, and the interface sheds itself on the way.** The floor was
@@ -564,7 +566,8 @@ accept clipboard paste.
   `.msi`), **Linux x64** (`.AppImage`, `.deb`, and `.rpm`), and **macOS** on both Intel x64 and
   Apple Silicon arm64 (`.dmg`).
 
-[Unreleased]: https://github.com/rendyuwu/ketikin/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/rendyuwu/ketikin/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/rendyuwu/ketikin/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/rendyuwu/ketikin/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/rendyuwu/ketikin/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/rendyuwu/ketikin/releases/tag/v0.1.0
