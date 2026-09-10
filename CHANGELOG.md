@@ -7,6 +7,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **The window goes down to 200x160, and the interface sheds itself on the way.** The floor was
+  460x560 — a quarter of a 1080p screen held by a text box and a button, in an app whose entire job
+  is to sit beside the console it types into and stay out of its way. It is now 200x160, an eighth of
+  the area, and that number is measured rather than chosen: the layout holds to 195x156 under a
+  headless-Chromium sweep, and the few pixels on top are for WebView2 and WebKitGTK, whose line boxes
+  are not Chromium's to the pixel. Two things were holding the old floor up. Horizontally it was the
+  three stop names under the cadence slider, which sit in three equal `1fr` columns and run into each
+  other at 300px and below — hiding them alone takes the surviving width from 320px to 195px, and
+  nothing is lost, because they are already `aria-hidden` decoration and the slider's
+  `aria-valuetext` speaks the name of the stop the thumb is on. Vertically it was `.compose-input`'s
+  own `min-height`, which at 155px pushed the last line of the canvas straight through the Start
+  button. Three things survive at every size — the textarea, Start/Stop, and the 3px progress rail —
+  and everything else is subtraction, in one `== responsive ==` section at the end of `styles.css`,
+  driven entirely by `max-width` / `max-height` queries with no mode state anywhere in the frontend.
+  Because every query is a `max-`, the default 560x700 window is untouched: it renders byte-identical
+  to the previous build through the same harness, as does a window taken to the floor and grown back.
+
+  How something is shed is an accessibility decision rather than a visual one, and the two rules are
+  written into the section. Anything the app *speaks* goes to the `.visually-hidden` geometry and
+  never to `display: none`: `.status` is the only `aria-live` region and is what announces "Starting
+  in 3…" and "Typing 40 / 512", `.btn-accel` is part of the Start button's accessible name,
+  `.tab-label` is the tab's name, and `.takeover-note` is a `role="status"`. Making the window
+  smaller was the request; making the app say less was not. `display: none` is reserved for things
+  drawn twice — the readout's decorative character and duration counters, whose numbers are also in
+  the visually-hidden sentence beside them, the Clear button over a box the user can select-all in,
+  and the whole cadence row, since the delay stays reachable in Settings > Typing. The tabs now carry
+  a glyph and their label at once and the stylesheet picks one, so the accessible name is the same
+  string at 560x700 and at 200x160, with no `aria-label` anywhere that could drift away from the text
+  beside it; arrow, Home and End navigation is unchanged and works at the floor. Three new glyphs
+  join the set, drawn as strokes on the same 16-unit grid as the other six and checked as rasters at
+  their rendered size rather than zoomed — they are only safe at 14px, which is the only size
+  anything draws them at, and the doc comment says so.
+
+  Two things were kept rather than shed, both deliberately. The countdown takeover stays at every
+  size, restyled compact — 20px digit, tighter band — because nothing leaves the DOM that way and the
+  accessible behaviour is identical at every size; dropping it in favour of the rail plus the header
+  status was rejected, since that status is itself shed below 300px wide and the two breakpoints
+  would have had to be kept from cancelling each other out. And banners lose their 35%-of-the-window
+  cap below 420px tall and push content instead: 35% of 160px is 56px, which fits no banner and
+  leaves the controls nothing, and degraded storage or a pending update are things the user has to
+  see. Withholding them silently would be the same class of failure as the Shift bug below. The
+  window is resizable, so the way out is dragging it bigger rather than a notice that was never
+  shown. The residual cost, knowingly taken, is cosmetic and belongs to Windows: the caption buttons
+  take about 105px whatever the window does, so below roughly 200px the titlebar is buttons and a
+  truncated title. ([#50](https://github.com/rendyuwu/ketikin/issues/50))
+
+### Fixed
+
+- **Uppercase letters and shifted symbols arrive as themselves in a KVM console.** Every character
+  other than a newline or a tab reached the target through `enigo.text()`, which is Unicode text
+  entry: `KEYEVENTF_UNICODE` with `wVk = 0` and the UTF-16 unit carried in `wScan` on Windows, and on
+  Linux a spare X11 keycode with both of its shift levels bound to the same keysym. That is the right
+  choice for a text field — `é` and `中` arrive without touching the active layout, which is why the
+  character itself still goes out that way — and it is invisible to anything that rebuilds keystrokes
+  from physical keys. A Proxmox noVNC console is exactly that: it reads `event.code` off the browser
+  event and resolves it through a scancode table, and QEMU's `keysym2scancode` then force-lowercases
+  `A` and masks the shift flag off `!`, because sending the shift state is the client's job and
+  Ketikin never pressed a Shift. `Passw0rd!` arrived in the guest as `passw0rd1` and the run still
+  reported `completed` — the worst shape a bug can have for a tool whose whole job is unattended
+  keystrokes. Ketikin now holds a real Shift around each character that needs one:
+  `enigo.key(Key::Shift, …)` goes out scan-coded through `MapVirtualKeyExW`, so the console sees
+  `event.code === "ShiftLeft"` and the shift level it was always waiting for. Press and release per
+  character rather than held across a run of them — it needs no extra state, it keeps enigo's
+  internal held-modifier list clean, and three `SendInput` calls per shifted character is nothing
+  against a per-keystroke delay measured in tens of milliseconds. `\n` and `\t` are matched before
+  the new path, so Enter, Shift+Enter and Tab are byte-identical to before, and the module's
+  no-modifier-left-held invariant still holds: the release is unconditional even when the character
+  itself fails to type, and every exit path in the run loop already released a held Shift.
+
+  The oracle for "needs a Shift" is a hardcoded US shift map — `A`–`Z` plus `!@#$%^&*()_+{}|:"<>?~`
+  — rather than a query of the client machine's active layout, which is the option that looks more
+  correct and answers a different question. QEMU computes the shift flag against the *server's*
+  keymap, its `-k`, which Proxmox sets from the VM's `keyboard` property and which defaults to
+  `en-us`; asking the client layout instead reports AltGr+Q for `@` on a German keyboard, presses no
+  Shift, and the guest still receives `2`. It tests ASCII uppercase specifically, so `É` and `Ω` keep
+  going through the Unicode path without collecting a Shift press that would do nothing for them. Two
+  costs taken knowingly: a VM started with a non-US `-k` needs that layout's shift map and is not
+  fixed by this, and AltGr-level characters need AltGr rather than Shift and are out of reach of this
+  change entirely. Characters *dropped* by targets that never call `TranslateMessage` are a third
+  mechanism and stay open as [#44](https://github.com/rendyuwu/ketikin/issues/44).
+  ([#49](https://github.com/rendyuwu/ketikin/issues/49))
+
 ## [0.3.0] - 2026-08-23
 
 ### Changed

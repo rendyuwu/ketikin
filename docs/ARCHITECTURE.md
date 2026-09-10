@@ -38,6 +38,18 @@ why the platform requirements in the README look the way they do: an X11 or XWay
 Linux, Accessibility permission on macOS. Because the Linux path speaks X11 directly rather than
 going through a helper library, there is no additional runtime input dependency to install.
 
+Characters go out as **Unicode text entry**, not as keycodes, so accented and non-Latin text arrives
+correctly whatever layout is active on the machine running Ketikin. The exception is that a
+character which needs a Shift on a US keyboard — ASCII uppercase, and the symbols on the number row
+and the punctuation keys — gets a **real Shift held around it** while the character itself still goes
+through the Unicode path. Unicode text entry carries no modifier state and no scan code by
+construction, which is invisible to a target that reconstructs keystrokes from physical keys rather
+than reading the character: a noVNC/QEMU console is the case that matters here, and it expects the
+client to have sent its own Shift. Holding one costs nothing for targets that were already working,
+because the character is delivered by the Unicode injection either way. The shift map is US, which is
+QEMU's default server keymap; a guest started with a different one, and anything at an AltGr level,
+is outside what this reaches. `typing.rs` documents that ceiling at `needs_shift`.
+
 Typing runs on a **dedicated worker thread**, never on the UI thread or an async task that could
 block the runtime. A slow console with a 200 ms delay and ten thousand characters means a worker
 that runs for half an hour, and the app has to stay responsive throughout.
@@ -140,6 +152,21 @@ run and clicks into a KVM console — so an indicator inside the content area is
 read. It is positioned rather than laid out so that appearing and disappearing with a run cannot
 shift the interface, and only its width animates, because `typing://state` arrives at ~20 events a
 second.
+
+The same premise sets the window's floor. Because Ketikin is meant to sit beside the console it
+types into, the window has to be able to get small — 200x160, against a default of 560x700 — and the
+layout **sheds** what does not fit rather than scrolling or clipping. Three things survive at every
+size: the compose textarea, Start / Stop, and the rail. Shedding is entirely stylesheet-driven, in
+one section of `styles.css` built from `max-width` and `max-height` queries, and there is no
+narrow-mode state anywhere in the frontend — no breakpoint hook, no measured width in a component,
+nothing for the DOM and the state to disagree about. Two rules govern *how* something is shed, and
+both exist because the window getting smaller must not make the app say less: anything spoken —
+`.status`, the only `aria-live` region; the shortcut hint inside the Start button, which is part of
+its accessible name; a tab's label; the takeover's `role="status"` note — goes to the
+visually-hidden geometry and stays in the tree, while `display: none` is reserved for things that
+are drawn twice and have a counterpart that survives. The floor in `tauri.conf.json` is a measured
+number, not a chosen one; the harness that measured it is throwaway, since the repo carries no CSS
+test infrastructure.
 
 The Rust core is the authority for persisted state, but the Settings panel does not wait on it.
 `useSettings` keeps optimistic local state: an edit updates the UI immediately and schedules a save
