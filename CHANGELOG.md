@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The update banner is whole again at the default window size.** The banner row was declared
+  `flex: 0 1 auto`, so it and the panel below it both gave up height in proportion to their base
+  sizes whenever the window column ran short — flexbox does not drain the panel first. The panel
+  already wraps a scroll container built to absorb exactly that overflow, but the row shrank
+  anyway: at the shipped 560x700 default a card that wanted 87px was handed 59px, which left the
+  first line of "Ketikin 0.5.0 is available." visible and put **Restart & install** below a fold,
+  inside a scrollbar nobody was looking for. Because the Settings section list always overflows a
+  700px window, that was every launch on that tab, not an edge case at a small size. The row now
+  keeps its natural height and the overflow lands on the panel's scroll container. The 35% cap
+  stays as the pile-up guard it was written to be — it was never what did the clipping, and 35% of
+  700px is 245px, so it had not once engaged at the sizes where the banner was being cut.
+
 ## [0.4.0] - 2026-09-11
 
 ### Changed

@@ -629,21 +629,34 @@ body {
   display: none;
 }
 
-/* Capped so a pile-up of banners can never squeeze the panel's own controls
-   out of a small window; in practice one or two banners stay well under it. The
-   cap was written against the 460x560 floor and the floor is now 200x160, where
-   35% of the height is 56px and no share of the window both fits a banner and
-   leaves the controls room — so the responsive section at the end of this file
-   lifts the cap entirely below 420px tall and lets banners push instead. */
+/* `flex-shrink: 0` is the load-bearing half of this rule, not the cap. With a
+   shrink factor of 1 this row and `.content` both gave up height in proportion
+   to their base sizes whenever the column overflowed, so the banner was clipped
+   and scrolled at the shipped 560x700 default — 87px of card handed 59px —
+   rather than only in a window small enough to justify it. The Settings section
+   list always overflows a 700px window (the note in the base section has that
+   measurement), so on that tab the column is over-constrained at every size,
+   and `.content` already wraps a scroll container that exists to absorb exactly
+   that overflow. The row takes its natural height; the overflow lands where it
+   was always meant to.
+   The cap is the pile-up guard it reads as, and only that: it engages when
+   several banners stack, never for the one or two that actually show. It was
+   written against the 460x560 floor and the floor is now 200x160, where 35% of
+   the height is 56px and no share of the window both fits a banner and leaves
+   the controls room — so the responsive section at the end of this file lifts
+   the cap entirely below 420px tall and lets banners push instead. */
 .banners {
   display: flex;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: var(--s-tight);
   max-height: 35%;
-  /* Top only. The panel below owns the distance to whatever precedes it, so
-     the gap under the header hairline is one --s-group with or without
-     banners. */
+  /* Top only, and top-only in the scrolling case too. The panel below owns the
+     distance to whatever precedes it, so the gap under the header hairline is
+     one --s-group with or without banners; a bottom pad would double that gap
+     in the state the row is almost always in — not scrolling — to soften a cut
+     edge that only a genuine pile-up reaches, and that edge is the affordance
+     saying there is more below it. */
   padding: var(--s-group) var(--s-edge) 0;
   overflow-y: auto;
 }
