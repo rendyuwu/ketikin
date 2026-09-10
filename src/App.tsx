@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Banner } from "./components/Banner";
-import { ExternalIcon } from "./components/Icons";
+import {
+  ExternalIcon,
+  SettingsIcon,
+  TemplatesIcon,
+  TypeIcon,
+} from "./components/Icons";
 import { useSettings } from "./hooks/useSettings";
 import { useTemplates } from "./hooks/useTemplates";
 import { useTyping } from "./hooks/useTyping";
@@ -34,10 +39,21 @@ type TabId = "type" | "templates" | "settings";
 /** The two hotkey slots, named by the wire type rather than restated. */
 type Which = HotkeyError["which"];
 
-const TABS: ReadonlyArray<{ id: TabId; label: string }> = [
-  { id: "type", label: "Type" },
-  { id: "templates", label: "Templates" },
-  { id: "settings", label: "Settings" },
+/**
+ * Both halves of each tab are always rendered and the stylesheet decides which
+ * one is drawn: the glyph replaces the label once the window is too narrow for
+ * three words, and the label goes to `.visually-hidden` rather than out of the
+ * DOM. So the tab's accessible name is the same string at every window size,
+ * with no `aria-label` anywhere to drift away from the text beside it.
+ */
+const TABS: ReadonlyArray<{
+  id: TabId;
+  label: string;
+  Icon: React.ComponentType<{ size?: number }>;
+}> = [
+  { id: "type", label: "Type", Icon: TypeIcon },
+  { id: "templates", label: "Templates", Icon: TemplatesIcon },
+  { id: "settings", label: "Settings", Icon: SettingsIcon },
 ];
 
 /**
@@ -290,13 +306,17 @@ export default function App() {
               // Only the selected panel is mounted, so only it can be referenced.
               aria-controls={tab === entry.id ? `panel-${entry.id}` : undefined}
               tabIndex={tab === entry.id ? 0 : -1}
+              // The label is not on screen at narrow widths, so the pointer
+              // gets it from the OS instead.
+              title={entry.label}
               ref={(el) => {
                 tabRefs.current[index] = el;
               }}
               onClick={() => setTab(entry.id)}
               onKeyDown={(event) => onTabKeyDown(event, index)}
             >
-              {entry.label}
+              <entry.Icon />
+              <span className="tab-label">{entry.label}</span>
             </button>
           ))}
         </div>

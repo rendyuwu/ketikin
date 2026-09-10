@@ -619,8 +619,22 @@ body {
   border-bottom-color: var(--accent);
 }
 
+/* Every tab carries its glyph and its label at once and only one of them is
+   ever drawn — the label here, the glyph in the responsive section at the end
+   of this file, which swaps them. This is the wide half of that swap and the
+   only reason it is a rule rather than a default: the glyph is in the markup at
+   every size because a stylesheet cannot conjure one, and `aria-hidden` on the
+   `<svg>` means hiding it costs nothing that has to be read. */
+.tab > svg {
+  display: none;
+}
+
 /* Capped so a pile-up of banners can never squeeze the panel's own controls
-   out of a 460x560 window; in practice one or two banners stay well under it. */
+   out of a small window; in practice one or two banners stay well under it. The
+   cap was written against the 460x560 floor and the floor is now 200x160, where
+   35% of the height is 56px and no share of the window both fits a banner and
+   leaves the controls room — so the responsive section at the end of this file
+   lifts the cap entirely below 420px tall and lets banners push instead. */
 .banners {
   display: flex;
   flex: 0 1 auto;
@@ -1456,7 +1470,13 @@ body {
 
 /* Three columns and two rows: label, track, value — then the stop names under
    the track alone. A grid rather than a wrapping flex row so the value cannot
-   drop onto its own line at 460px, which is the width this has to survive. */
+   drop onto its own line at the narrowest window this has to survive, which is
+   now 200px rather than the 460px it was written for. It gets there in two
+   stages, both in the responsive section at the end of this file: the stop names
+   go below 300px wide, where they outgrow their own 1fr columns, and the whole
+   row goes below 420px tall, where the delay is reached through Settings
+   instead. Between those, label + track + field hold a 200px window with the
+   field's own edge ~5px clear of the gutter. */
 .cadence {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -2131,5 +2151,156 @@ body {
   .compose-input:focus-visible {
     outline: 2px solid;
     outline-offset: 2px;
+  }
+}
+
+/* ========================================================== responsive == */
+
+/* Ketikin's whole job is to sit beside the console it types into, so the window
+   has to be able to get out of the way — down to 200x160, an eighth of the area
+   of the 460x560 floor it used to insist on. Everything below is subtraction:
+   three things survive at every size, the textarea, Start/Stop, and the progress
+   rail, and nothing else is load-bearing enough to keep a row for.
+   200x160 is where `minWidth`/`minHeight` in tauri.conf.json are set, and it is
+   the measured survival point rounded up rather than a number picked first. The
+   layout actually holds to 195x156: at 194 the delay field runs out of the
+   cadence grid, and at 155 `.compose-input`'s own `min-height` pushes the last
+   line of the canvas through the Start button. The few pixels of margin are for
+   WebView2 and WebKitGTK, whose line boxes are not Chromium's to the pixel.
+   Kept in one section rather than beside each rule so the shedding can be read
+   as a single decision, and last in the file so the base rules win at the
+   default 560x700 — every query here is `max-`, so none of them apply there.
+   Two rules about how things are shed, and both are accessibility rather than
+   taste:
+   - Anything that is *spoken* goes to the `.visually-hidden` geometry, never to
+     `display: none`. `.status` is the app's only `aria-live` region, `.btn-accel`
+     is part of the Start button's accessible name, `.tab-label` is the tab's
+     name, and `.takeover-note` is a `role="status"`. Removing any of those
+     would make the app say less at a small size, which is not what "smaller"
+     was asked for. The declarations are spelled out each time because CSS has
+     no way to hand an element another selector's rules, and `.visually-hidden`
+     is a class the markup applies, not one a media query can.
+   - `display: none` is only for things that are drawn twice. `.type-count` and
+     `.type-duration` are `aria-hidden` decorations of the sentence beside them
+     (`TypePanel.tsx`), the Clear button empties a box the user can select-all
+     in, and `.cadence` restates a field that stays in Settings > Typing. */
+
+/* The shortcut hint is absolutely positioned at the button's right edge while
+   the label is centred, so this is the width at which the two start to touch. */
+@media (max-width: 380px) {
+  .btn-accel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    border: 0;
+    clip-path: inset(50%);
+  }
+}
+
+/* Three words plus a status string do not fit one row much below this, and the
+   status is the first to go: it is a running commentary on a run the rail is
+   already drawing, and it keeps announcing either way. */
+@media (max-width: 300px) {
+  .tab-label,
+  .status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    border: 0;
+    clip-path: inset(50%);
+  }
+
+  /* The other half of the swap set up beside `.tab` in the shell section. */
+  .tab > svg {
+    display: block;
+  }
+
+  /* Three 14px glyphs read as one row of three at group distance; --s-group
+     between them would read as three separate things. */
+  .tabs {
+    gap: var(--s-tight);
+  }
+
+  /* The three stop names under the cadence track are the one thing that stood
+     between this window and its 200px floor: they sit in three equal 1fr
+     columns, and at 300px and below "Careful" and "Fast" grow wider than their
+     own cell and run into "Normal" in the middle — with them hidden the width
+     the layout survives goes from 320px to 195px, which is the whole gap.
+     Nothing is lost — they are already marked
+     `aria-hidden` in TypePanel and described there as decoration for the eye,
+     because the slider's `aria-valuetext` speaks the name of the stop the thumb
+     is on. The track itself, the delay field, and the label all stay. */
+  .cadence-stops {
+    display: none;
+  }
+}
+
+/* Below this the footer costs more rows than the canvas it describes. The
+   window gutter and the group rhythm are retuned rather than dropped — at 10px
+   and 12px there is still a hierarchy, at 0 there is a wall of controls. */
+@media (max-height: 420px) {
+  :root {
+    --s-group: 12px;
+    --s-edge: 10px;
+  }
+
+  /* One whole line of 15px/1.6 mono plus the 8px bottom pad this carries, which
+     is the smallest box that still reads as the text being typed. */
+  .compose-input {
+    min-height: 32px;
+  }
+
+  /* The `.visually-hidden` sentence in the same paragraph stays and is the only
+     accessible character count, which is why `.type-readout` itself is not
+     touched — hiding the paragraph would take that with it. */
+  .type-count,
+  .type-duration,
+  .type-readout > .btn {
+    display: none;
+  }
+
+  .cadence {
+    display: none;
+  }
+
+  /* The cap exists to stop banners squeezing the panel's controls out; at this
+     height there is no share of the window that both fits a banner and leaves
+     the controls room, so the banners win and push instead. They report things
+     the user has to see — degraded storage, a pending update — and the window
+     is resizable, so the way out is dragging it bigger rather than a notice
+     that was never shown. */
+  .banners {
+    max-height: none;
+  }
+
+  .takeover-band {
+    padding: var(--s-tight);
+  }
+
+  /* Still the largest thing on the screen, which is the whole job: the user is
+     mid-click into another window and has to catch this from the corner of the
+     eye. `digit-swap` is untouched. */
+  .takeover-digit {
+    font-size: 20px;
+  }
+
+  .takeover-note {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    border: 0;
+    clip-path: inset(50%);
   }
 }

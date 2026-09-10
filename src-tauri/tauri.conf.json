@@ -16,8 +16,8 @@
         "title": "Ketikin",
         "width": 560,
         "height": 700,
-        "minWidth": 460,
-        "minHeight": 560,
+        "minWidth": 200,
+        "minHeight": 160,
         "resizable": true,
         "center": true,
         "decorations": true
