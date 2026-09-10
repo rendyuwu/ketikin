@@ -455,10 +455,43 @@ fn send_char(
             }
         },
         '\t' => enigo.key(Key::Tab, Direction::Click),
+        _ if needs_shift(ch) => {
+            enigo.key(Key::Shift, Direction::Press)?;
+            *shift_held = true;
+
+            // Same shape as the ShiftEnter arm above, for the same reason: an early
+            // return between press and release would leave Shift stuck down on the
+            // user's machine.
+            let typed = enigo.text(ch.encode_utf8(&mut buf));
+            let released = enigo.key(Key::Shift, Direction::Release);
+            if released.is_ok() {
+                *shift_held = false;
+            }
+            typed.and(released)
+        }
         // Unicode text entry rather than a keycode, so accented and non-Latin
         // characters arrive correctly regardless of the active layout.
         _ => enigo.text(ch.encode_utf8(&mut buf)),
     }
+}
+
+/// Whether `ch` needs a physical Shift held to arrive correctly in a target
+/// that rebuilds keystrokes from physical keys.
+///
+/// `enigo.text()` injects Unicode with no scan code and no modifier state
+/// (`KEYEVENTF_UNICODE` on Windows; a spare keycode with both shift levels
+/// bound to the same keysym on X11), which is invisible to a noVNC/QEMU
+/// console: QEMU force-lowercases 'A' and masks the shift flag off '!', and
+/// expects the client to have sent its own Shift.
+///
+/// ponytail: this is the US/en-us shift map, which is QEMU's default `-k` and
+/// therefore what `keysym2scancode` consults for a stock Proxmox VM. A VM
+/// started with `-k de` needs that layout's map instead. Querying the *client*
+/// layout with `VkKeyScanExW` is not the upgrade path — it answers a different
+/// question and gets German `@` wrong. AltGr levels need AltGr, not Shift, and
+/// are out of reach of this function entirely.
+fn needs_shift(ch: char) -> bool {
+    ch.is_ascii_uppercase() || "!@#$%^&*()_+{}|:\"<>?~".contains(ch)
 }
 
 fn release_shift(enigo: &mut Enigo, shift_held: &mut bool) {
@@ -553,6 +586,44 @@ mod tests {
         assert_eq!(NewlineMode::parse("skip"), NewlineMode::Skip);
         assert_eq!(NewlineMode::parse("shift_enter"), NewlineMode::Enter);
         assert_eq!(NewlineMode::parse(""), NewlineMode::Enter);
+    }
+
+    // These cover the decision only. The injection side — the actual Shift
+    // press and release around `enigo.text()` — cannot be tested without a real
+    // target window to type into; acceptance criteria 7 and 8 in
+    // `.omc/plans/49-50-shift-and-window-floor.md` cover that part manually.
+
+    #[test]
+    fn needs_shift_covers_ascii_uppercase() {
+        for ch in 'A'..='Z' {
+            assert!(needs_shift(ch), "{ch} should need Shift");
+        }
+    }
+
+    #[test]
+    fn needs_shift_covers_us_shifted_symbols() {
+        for ch in "!@#$%^&*()_+{}|:\"<>?~".chars() {
+            assert!(needs_shift(ch), "{ch} should need Shift");
+        }
+    }
+
+    #[test]
+    fn needs_shift_skips_unshifted_ascii() {
+        for ch in ('a'..='z').chain('0'..='9') {
+            assert!(!needs_shift(ch), "{ch} should not need Shift");
+        }
+        for ch in " -=[]\\;',./`".chars() {
+            assert!(!needs_shift(ch), "{ch} should not need Shift");
+        }
+    }
+
+    #[test]
+    fn needs_shift_skips_non_ascii() {
+        // `É` in particular: `is_uppercase` would be true for it, but it reaches
+        // the target through Unicode text entry and a Shift press would be noise.
+        for ch in ['é', 'ü', '中', '\u{1F600}', 'É'] {
+            assert!(!needs_shift(ch), "{ch} should not need Shift");
+        }
     }
 
     #[test]
