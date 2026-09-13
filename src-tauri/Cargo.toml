@@ -17,7 +17,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 chrono = { version = "0.4.45", features = ["serde"] }
-dirs = "6.0.0"
+dirs = "7.0.0"
 enigo = "0.6.1"
 log = "0.4.33"
 serde = { version = "1.0.229", features = ["derive"] }
